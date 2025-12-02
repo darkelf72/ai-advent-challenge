@@ -27,7 +27,7 @@ class ApiClient {
     fun sendRequest(query: String): String =
         runBlocking {
             try {
-                println("Sending GET request to: $URL")
+                println("Sending POST request to: $URL")
                 val request = RequestDto(
                     modelUri = "gpt://b1g2vhjdd9rgjq542poc/yandexgpt/latest",
                     completionOptions = CompletionOptionsDto(
@@ -41,7 +41,7 @@ class ApiClient {
                             text =  """
                                 Возвращай ответ в формате json.
                                 Ответ должен состоять из двух полей:
-                                1) message c текстом ответа 
+                                1) message c текстом ответа
                                 2) elapsedTime со временем в миллисекундах, затраченным на получение ответа
                             """.trimIndent()
                         ),
@@ -61,12 +61,9 @@ class ApiClient {
                 }
                 println("Status: ${response.status}")
                 val body = response.body<ResponseDto>()
-                val answer = body.result.alternatives.first().message.text
-                answer
+                body.result.alternatives.first().message.text
             } catch (e: Exception) {
                 "Request failed: ${e.message}"
-            } finally {
-                client.close()
             }
         }
     }

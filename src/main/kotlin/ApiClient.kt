@@ -37,6 +37,15 @@ class ApiClient {
                     ),
                     messages = listOf(
                         MessageDto(
+                            role = "system",
+                            text =  """
+                                Возвращай ответ в формате json.
+                                Ответ должен состоять из двух полей:
+                                1) message c текстом ответа 
+                                2) elapsedTime со временем в миллисекундах, затраченным на получение ответа
+                            """.trimIndent()
+                        ),
+                        MessageDto(
                             role = "user",
                             text = query
                         )

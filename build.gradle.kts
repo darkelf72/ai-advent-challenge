@@ -43,4 +43,5 @@ application {
 
 tasks.named<JavaExec>("run") {
     systemProperty("yandexApiKey", project.findProperty("yandexApiKey") as String)
+    systemProperty("gigaChatApiKey", project.findProperty("gigaChatApiKey") as String)
 }

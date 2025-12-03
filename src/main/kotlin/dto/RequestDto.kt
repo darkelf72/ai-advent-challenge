@@ -7,8 +7,8 @@ data class RequestDto(
     val modelUri: String,
     val completionOptions: CompletionOptionsDto,
     val messages: List<MessageDto>,
-    @SerialName("json_object")
-    val jsonObject: Boolean = true
+//    @SerialName("json_object")
+//    val jsonObject: Boolean = true
 )
 
 @Serializable
@@ -21,5 +21,5 @@ data class CompletionOptionsDto(
 @Serializable
 data class MessageDto(
     val role: String,
-    val text: String
+    var text: String
 )

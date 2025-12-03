@@ -24,10 +24,44 @@ class ApiClient {
         }
     }
 
+    private val systemMessage = MessageDto(
+        role = "system",
+        text = """
+            Ты — профессиональный технический писатель. Твоя задача: собрать требования для технического задания (ТЗ) по проекту «[название проекта]».
+
+            **Процесс работы:**
+            1. Ты должен задать эти уточняющие вопросы, чтобы поэтапно выявить все ключевые требования:
+               - Какая цель проекта
+               - Какой срок проект
+               - Какой бюджет проекта
+            2. Каждый раз задавай только один вопрос.   
+            3. Когда эти вопросы будут заданы, самостоятельно заверши диалог и выдай итоговое ТЗ в формате Markdown.
+
+            **Критерии достаточности данных (когда нужно остановиться и выдать ТЗ):**
+            - Определена цель проекта.
+            - Указаны сроки и бюджет (если известны).
+
+            **Формат итогового ТЗ:**
+            ```markdown
+            # Техническое задание: [название проекта]
+
+            ## 1. Цель проекта
+            [Текст]
+
+            ## 2. Сроки и бюджет
+            - Сроки: [срок]
+            - Бюджет: [сумма]
+        """.trimIndent()
+
+    )
+    private val messageHistory = mutableListOf<MessageDto>()
+
     fun sendRequest(query: String): String =
         runBlocking {
             try {
-                println("Sending POST request to: $URL")
+                val userMessage = MessageDto(role = "user", text = query)
+                messageHistory.add(userMessage)
+
                 val request = RequestDto(
                     modelUri = "gpt://b1g2vhjdd9rgjq542poc/yandexgpt/latest",
                     completionOptions = CompletionOptionsDto(
@@ -35,23 +69,10 @@ class ApiClient {
                         temperature = 0.5,
                         maxTokens = 100
                     ),
-                    messages = listOf(
-                        MessageDto(
-                            role = "system",
-                            text =  """
-                                Возвращай ответ в формате json.
-                                Ответ должен состоять из двух полей:
-                                1) message c текстом ответа
-                                2) elapsedTime со временем в миллисекундах, затраченным на получение ответа
-                            """.trimIndent()
-                        ),
-                        MessageDto(
-                            role = "user",
-                            text = query
-                        )
-                    )
+                    messages = messageHistory + systemMessage
                 )
 
+                println("Sending POST request to: $URL\n$request")
                 val response: HttpResponse = client.post(URL) {
                     header("accept", "application/json")
                     header("content-type", "application/json")
@@ -61,7 +82,11 @@ class ApiClient {
                 }
                 println("Status: ${response.status}")
                 val body = response.body<ResponseDto>()
-                body.result.alternatives.first().message.text
+                println(body)
+                val answer = body.result.alternatives.first().message.text
+                val assistantMessage = MessageDto(role = "assistant", text = answer)
+                messageHistory.add(assistantMessage)
+                answer
             } catch (e: Exception) {
                 "Request failed: ${e.message}"
             }

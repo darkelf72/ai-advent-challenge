@@ -135,10 +135,15 @@ fun HTML.chatPage() {
                         flex: 1;
                         padding: 12px 16px;
                         border: 2px solid #e0e0e0;
-                        border-radius: 25px;
+                        border-radius: 10px;
                         font-size: 14px;
+                        font-family: inherit;
                         outline: none;
                         transition: border-color 0.3s;
+                        resize: none;
+                        min-height: 96px;
+                        max-height: 150px;
+                        overflow-y: auto;
                     }
                     #messageInput:focus {
                         border-color: #667eea;
@@ -177,10 +182,10 @@ fun HTML.chatPage() {
             div(classes = "header") { +"AI Chat Assistant" }
             div(classes = "chat-box") { id = "chatBox" }
             div(classes = "input-area") {
-                input {
+                textArea {
                     id = "messageInput"
-                    type = InputType.text
-                    placeholder = "Введите сообщение..."
+                    placeholder = "Введите сообщение... (Shift+Enter для новой строки)"
+                    rows = "1"
                 }
                 button {
                     id = "sendButton"
@@ -251,8 +256,11 @@ fun HTML.chatPage() {
                     };
 
                     sendButton.addEventListener('click', sendMessage);
-                    messageInput.addEventListener('keypress', (e) => {
-                        if (e.key === 'Enter' && !sendButton.disabled) sendMessage();
+                    messageInput.addEventListener('keydown', (e) => {
+                        if (e.key === 'Enter' && !e.shiftKey && !sendButton.disabled) {
+                            e.preventDefault();
+                            sendMessage();
+                        }
                     });
 
                     messageInput.focus();

@@ -1,6 +1,7 @@
 import io.ktor.client.*
 import io.ktor.client.call.*
 import io.ktor.client.engine.cio.CIO
+import io.ktor.client.engine.cio.endpoint
 import io.ktor.client.plugins.contentnegotiation.ContentNegotiation
 import io.ktor.client.request.*
 import io.ktor.client.statement.*
@@ -8,7 +9,10 @@ import io.ktor.http.*
 import io.ktor.serialization.kotlinx.json.json
 import kotlinx.serialization.Serializable
 import org.slf4j.LoggerFactory
+import java.security.KeyStore
 import java.util.*
+import javax.net.ssl.TrustManagerFactory
+import javax.net.ssl.X509TrustManager
 
 @Serializable
 data class GigaChatMessage(
@@ -54,10 +58,26 @@ class GigaChatApiClient {
         const val AUTH_URL = "https://ngw.devices.sberbank.ru:9443/api/v2/oauth"
     }
 
+    private val keystoreStream = this::class.java.classLoader.getResourceAsStream("truststore.jks")
+    private val trustManagerFactory = TrustManagerFactory.getInstance(TrustManagerFactory.getDefaultAlgorithm()).apply {
+        init(KeyStore.getInstance(KeyStore.getDefaultType()).apply {
+            load(keystoreStream, "changeit".toCharArray())
+        })
+    }
+
     private val httpClient = HttpClient(CIO) {
         install(ContentNegotiation) {
             json()
         }
+//        engine {
+//            endpoint {
+//                connectTimeout = 30000
+//                requestTimeout = 60000
+//            }
+//            https {
+//                this.trustManager = trustManagerFactory.trustManagers[0] as X509TrustManager
+//            }
+//        }
     }
 
     private var accessToken: String? = null

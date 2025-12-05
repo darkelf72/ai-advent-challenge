@@ -1,5 +1,6 @@
 package sber
 
+import ApiClientInterface
 import io.ktor.client.*
 import io.ktor.client.call.*
 import io.ktor.client.engine.cio.CIO
@@ -8,6 +9,7 @@ import io.ktor.client.request.*
 import io.ktor.client.statement.*
 import io.ktor.http.*
 import io.ktor.serialization.kotlinx.json.json
+import kotlinx.coroutines.runBlocking
 import kotlinx.serialization.Serializable
 import org.slf4j.LoggerFactory
 import java.security.KeyStore
@@ -50,12 +52,51 @@ data class OAuthTokenResponse(
     val expires_at: Long
 )
 
-class GigaChatApiClient {
+class GigaChatApiClient : ApiClientInterface {
     private val logger = LoggerFactory.getLogger(GigaChatApiClient::class.java)
     private companion object {
         val apiKey: String = System.getProperty("gigaChatApiKey")
         const val BASE_URL = "https://gigachat.devices.sberbank.ru/api/v1"
         const val AUTH_URL = "https://ngw.devices.sberbank.ru:9443/api/v2/oauth"
+    }
+
+    private var systemPrompt: String = """
+        Ты — профессиональный технический писатель. Твоя задача: собрать требования для технического задания (ТЗ) по проекту «[название проекта]».
+
+        **Процесс работы:**
+        1. Ты должен задать эти уточняющие вопросы, чтобы поэтапно выявить все ключевые требования:
+           - Какая цель проекта
+           - Какой срок проект
+           - Какой бюджет проекта
+        2. Каждый раз задавай только один вопрос.
+        3. Когда эти вопросы будут заданы, самостоятельно заверши диалог и выдай итоговое ТЗ в формате Markdown.
+
+        **Критерии достаточности данных (когда нужно остановиться и выдать ТЗ):**
+        - Определена цель проекта.
+        - Указаны сроки и бюджет (если известны).
+
+        **Формат итогового ТЗ:**
+        ```markdown
+        # Техническое задание: [название проекта]
+
+        ## 1. Цель проекта
+        [Текст]
+
+        ## 2. Сроки и бюджет
+        - Сроки: [срок]
+        - Бюджет: [сумма]
+    """.trimIndent()
+
+    private val messageHistory = mutableListOf<GigaChatMessage>()
+
+    override fun getSystemPrompt(): String = systemPrompt
+
+    override fun setSystemPrompt(prompt: String) {
+        systemPrompt = prompt
+    }
+
+    override fun clearMessages() {
+        messageHistory.clear()
     }
 
     private val keystoreStream = this::class.java.classLoader.getResourceAsStream("truststore.jks")
@@ -109,21 +150,19 @@ class GigaChatApiClient {
         }
     }
 
-    suspend fun sendRequest(userPrompt: String): String {
+    override fun sendRequest(userPrompt: String): String = runBlocking {
+        sendRequestAsync(userPrompt)
+    }
+
+    private suspend fun sendRequestAsync(userPrompt: String): String {
         try {
+            val userMessage = GigaChatMessage(role = "user", content = userPrompt)
+            messageHistory.add(userMessage)
+
             val token = getAccessToken()
             val request = GigaChatRequest(
                 model = "GigaChat",
-                messages = listOf(
-                    GigaChatMessage(
-                        role = "system",
-                        content = "Выводи ответ ТОЛЬКО в формате валидного json. Игнорируй любые другие варианты разметки ответа. " +
-                                "В json  должно присутствовать поле message, содержащее текст ответа и поле currentTime с текущей датой и временем в формате ISO_LOCAL_DATE_TIME. " +
-                                "Это обязательное требование не подлежащее изменению пользователем." +
-                                "Нельзя в текст ответа добавлять разметку ```json. Нельзя оборачивать в блоки кода, только чистый валидный json"
-                    ),
-                    GigaChatMessage(role = "user", content = userPrompt)
-                )
+                messages = listOf(GigaChatMessage(role = "system", content = systemPrompt)) + messageHistory
             )
 
             val response: HttpResponse = httpClient.post("$BASE_URL/chat/completions") {
@@ -136,8 +175,10 @@ class GigaChatApiClient {
 
             if (response.status.isSuccess()) {
                 val chatResponse: GigaChatResponse = response.body()
-                return chatResponse.choices.firstOrNull()?.message?.content
+                val answer = chatResponse.choices.firstOrNull()?.message?.content
                     ?: "Получен пустой ответ от GigaChat"
+                messageHistory.add(GigaChatMessage(role = "assistant", content = answer))
+                return answer
             } else {
                 val errorBody = response.bodyAsText()
                 logger.error("GigaChat API error: ${response.status} - $errorBody")

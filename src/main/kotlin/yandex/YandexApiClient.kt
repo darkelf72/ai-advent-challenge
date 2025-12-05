@@ -1,5 +1,6 @@
 package yandex
 
+import ApiClientInterface
 import yandex.dto.CompletionOptionsDto
 import yandex.dto.MessageDto
 import yandex.dto.RequestDto
@@ -17,7 +18,7 @@ import io.ktor.http.contentType
 import io.ktor.serialization.kotlinx.json.json
 import kotlinx.coroutines.runBlocking
 
-class YandexApiClient {
+class YandexApiClient : ApiClientInterface {
     private companion object {
         const val URL = "https://llm.api.cloud.yandex.net/foundationModels/v1/completion"
         val apiKey: String = System.getProperty("yandexApiKey")
@@ -29,40 +30,46 @@ class YandexApiClient {
         }
     }
 
-    var systemPrompt = MessageDto(
-        role = "system",
-        text = """
-            Ты — профессиональный технический писатель. Твоя задача: собрать требования для технического задания (ТЗ) по проекту «[название проекта]».
+    private var systemPrompt: String = """
+        Ты — профессиональный технический писатель. Твоя задача: собрать требования для технического задания (ТЗ) по проекту «[название проекта]».
 
-            **Процесс работы:**
-            1. Ты должен задать эти уточняющие вопросы, чтобы поэтапно выявить все ключевые требования:
-               - Какая цель проекта
-               - Какой срок проект
-               - Какой бюджет проекта
-            2. Каждый раз задавай только один вопрос.   
-            3. Когда эти вопросы будут заданы, самостоятельно заверши диалог и выдай итоговое ТЗ в формате Markdown.
+        **Процесс работы:**
+        1. Ты должен задать эти уточняющие вопросы, чтобы поэтапно выявить все ключевые требования:
+           - Какая цель проекта
+           - Какой срок проект
+           - Какой бюджет проекта
+        2. Каждый раз задавай только один вопрос.
+        3. Когда эти вопросы будут заданы, самостоятельно заверши диалог и выдай итоговое ТЗ в формате Markdown.
 
-            **Критерии достаточности данных (когда нужно остановиться и выдать ТЗ):**
-            - Определена цель проекта.
-            - Указаны сроки и бюджет (если известны).
+        **Критерии достаточности данных (когда нужно остановиться и выдать ТЗ):**
+        - Определена цель проекта.
+        - Указаны сроки и бюджет (если известны).
 
-            **Формат итогового ТЗ:**
-            ```markdown
-            # Техническое задание: [название проекта]
+        **Формат итогового ТЗ:**
+        ```markdown
+        # Техническое задание: [название проекта]
 
-            ## 1. Цель проекта
-            [Текст]
+        ## 1. Цель проекта
+        [Текст]
 
-            ## 2. Сроки и бюджет
-            - Сроки: [срок]
-            - Бюджет: [сумма]
-        """.trimIndent()
-    )
+        ## 2. Сроки и бюджет
+        - Сроки: [срок]
+        - Бюджет: [сумма]
+    """.trimIndent()
+
     private val messageHistory = mutableListOf<MessageDto>()
 
-    fun clearHistory(): Unit = messageHistory.clear()
+    override fun getSystemPrompt(): String = systemPrompt
 
-    fun sendRequest(query: String): String =
+    override fun setSystemPrompt(prompt: String) {
+        systemPrompt = prompt
+    }
+
+    override fun clearMessages() {
+        messageHistory.clear()
+    }
+
+    override fun sendRequest(query: String): String =
         runBlocking {
             try {
                 val userMessage = MessageDto(role = "user", text = query)
@@ -75,7 +82,7 @@ class YandexApiClient {
                         temperature = 0.5,
                         maxTokens = 100
                     ),
-                    messages = messageHistory + systemPrompt
+                    messages = listOf(MessageDto("system", systemPrompt)) + messageHistory
                 )
 
                 println("Sending POST request to: $URL\n$request")

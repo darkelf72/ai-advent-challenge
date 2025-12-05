@@ -19,8 +19,14 @@ data class ChatRequest(val message: String)
 @Serializable
 data class ChatResponse(val question: String, val answer: String)
 
-private val apiClient = YandexApiClient()
-//private val apiClient = sber.GigaChatApiClient()
+@Serializable
+data class SystemPromptRequest(val prompt: String)
+
+@Serializable
+data class SystemPromptResponse(val prompt: String)
+
+private val apiClient: ApiClientInterface = YandexApiClient()
+//private val apiClient: ApiClientInterface = sber.GigaChatApiClient()
 
 fun main() {
     embeddedServer(Netty, port = 9999, host = "0.0.0.0") {
@@ -38,6 +44,9 @@ fun Application.configureServer() {
     routing {
         get("/") { call.respondHtml { chatPage() } }
         post("/api/send") { handleSendMessage(call) }
+        get("/api/system-prompt") { handleGetSystemPrompt(call) }
+        post("/api/system-prompt") { handleSetSystemPrompt(call) }
+        post("/api/clear-history") { handleClearHistory(call) }
     }
 }
 
@@ -45,6 +54,21 @@ suspend fun handleSendMessage(call: ApplicationCall) {
     val request = call.receive<ChatRequest>()
     val answer = apiClient.sendRequest(request.message)
     call.respond(ChatResponse(question = request.message, answer = answer))
+}
+
+suspend fun handleGetSystemPrompt(call: ApplicationCall) {
+    call.respond(SystemPromptResponse(prompt = apiClient.getSystemPrompt()))
+}
+
+suspend fun handleSetSystemPrompt(call: ApplicationCall) {
+    val request = call.receive<SystemPromptRequest>()
+    apiClient.setSystemPrompt(request.prompt)
+    call.respond(SystemPromptResponse(prompt = request.prompt))
+}
+
+suspend fun handleClearHistory(call: ApplicationCall) {
+    apiClient.clearMessages()
+    call.respond(mapOf("status" to "ok"))
 }
 
 fun HTML.chatPage() {
@@ -84,6 +108,85 @@ fun HTML.chatPage() {
                         font-size: 24px;
                         font-weight: bold;
                         box-shadow: 0 2px 10px rgba(0,0,0,0.1);
+                    }
+                    .controls-area {
+                        background: #f9f9f9;
+                        padding: 15px;
+                        border-bottom: 1px solid #e0e0e0;
+                        display: flex;
+                        flex-direction: column;
+                        gap: 10px;
+                    }
+                    .system-prompt-area {
+                        display: flex;
+                        flex-direction: column;
+                        gap: 8px;
+                    }
+                    .system-prompt-label {
+                        font-size: 12px;
+                        font-weight: bold;
+                        color: #666;
+                    }
+                    #systemPromptInput {
+                        width: 100%;
+                        padding: 10px;
+                        border: 2px solid #e0e0e0;
+                        border-radius: 8px;
+                        font-size: 13px;
+                        font-family: monospace;
+                        resize: vertical;
+                        min-height: 80px;
+                        max-height: 200px;
+                        outline: none;
+                        transition: border-color 0.3s;
+                    }
+                    #systemPromptInput:focus {
+                        border-color: #667eea;
+                    }
+                    .control-buttons {
+                        display: flex;
+                        gap: 10px;
+                        flex-wrap: wrap;
+                    }
+                    .control-btn {
+                        padding: 8px 16px;
+                        border: none;
+                        border-radius: 6px;
+                        font-size: 13px;
+                        font-weight: bold;
+                        cursor: pointer;
+                        transition: all 0.2s;
+                    }
+                    .control-btn:hover:not(:disabled) {
+                        transform: translateY(-1px);
+                        box-shadow: 0 2px 8px rgba(0,0,0,0.15);
+                    }
+                    .control-btn:disabled {
+                        opacity: 0.5;
+                        cursor: not-allowed;
+                    }
+                    .btn-primary {
+                        background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+                        color: white;
+                    }
+                    .btn-danger {
+                        background: #e74c3c;
+                        color: white;
+                    }
+                    @media (max-width: 600px) {
+                        .controls-area {
+                            padding: 10px;
+                        }
+                        #systemPromptInput {
+                            min-height: 60px;
+                            font-size: 12px;
+                        }
+                        .control-buttons {
+                            flex-direction: column;
+                        }
+                        .control-btn {
+                            width: 100%;
+                        }
                     }
                     .chat-box {
                         flex: 1;
@@ -181,7 +284,31 @@ fun HTML.chatPage() {
     body {
         div(classes = "container") {
             div(classes = "header") { +"AI Chat Assistant" }
+
+            div(classes = "controls-area") {
+                div(classes = "system-prompt-area") {
+                    div(classes = "system-prompt-label") { +"System Prompt:" }
+                    textArea {
+                        id = "systemPromptInput"
+                        placeholder = "Введите системный промпт..."
+                    }
+                }
+                div(classes = "control-buttons") {
+                    button {
+                        id = "setPromptButton"
+                        classes = setOf("control-btn", "btn-primary")
+                        +"Set systemPrompt"
+                    }
+                    button {
+                        id = "clearHistoryButton"
+                        classes = setOf("control-btn", "btn-danger")
+                        +"Clear history"
+                    }
+                }
+            }
+
             div(classes = "chat-box") { id = "chatBox" }
+
             div(classes = "input-area") {
                 textArea {
                     id = "messageInput"
@@ -200,6 +327,73 @@ fun HTML.chatPage() {
                     const chatBox = document.getElementById('chatBox');
                     const messageInput = document.getElementById('messageInput');
                     const sendButton = document.getElementById('sendButton');
+                    const systemPromptInput = document.getElementById('systemPromptInput');
+                    const setPromptButton = document.getElementById('setPromptButton');
+                    const clearHistoryButton = document.getElementById('clearHistoryButton');
+
+                    const loadSystemPrompt = async () => {
+                        try {
+                            const response = await fetch('/api/system-prompt');
+                            if (response.ok) {
+                                const data = await response.json();
+                                systemPromptInput.value = data.prompt;
+                            }
+                        } catch (error) {
+                            console.error('Failed to load system prompt:', error);
+                        }
+                    };
+
+                    const setSystemPrompt = async () => {
+                        const prompt = systemPromptInput.value.trim();
+                        if (!prompt) {
+                            alert('System prompt не может быть пустым');
+                            return;
+                        }
+
+                        try {
+                            setPromptButton.disabled = true;
+                            const response = await fetch('/api/system-prompt', {
+                                method: 'POST',
+                                headers: { 'Content-Type': 'application/json' },
+                                body: JSON.stringify({ prompt })
+                            });
+
+                            if (response.ok) {
+                                alert('System prompt успешно обновлен!');
+                            } else {
+                                alert('Ошибка при обновлении system prompt');
+                            }
+                        } catch (error) {
+                            alert('Ошибка сети: ' + error.message);
+                        } finally {
+                            setPromptButton.disabled = false;
+                        }
+                    };
+
+                    const clearHistory = async () => {
+                        if (!confirm('Вы уверены, что хотите очистить историю сообщений?')) {
+                            return;
+                        }
+
+                        try {
+                            clearHistoryButton.disabled = true;
+                            const response = await fetch('/api/clear-history', {
+                                method: 'POST',
+                                headers: { 'Content-Type': 'application/json' }
+                            });
+
+                            if (response.ok) {
+                                chatBox.innerHTML = '';
+                                alert('История успешно очищена!');
+                            } else {
+                                alert('Ошибка при очистке истории');
+                            }
+                        } catch (error) {
+                            alert('Ошибка сети: ' + error.message);
+                        } finally {
+                            clearHistoryButton.disabled = false;
+                        }
+                    };
 
                     const addMessage = (text, isUser) => {
                         const messageDiv = document.createElement('div');
@@ -257,6 +451,9 @@ fun HTML.chatPage() {
                     };
 
                     sendButton.addEventListener('click', sendMessage);
+                    setPromptButton.addEventListener('click', setSystemPrompt);
+                    clearHistoryButton.addEventListener('click', clearHistory);
+
                     messageInput.addEventListener('keydown', (e) => {
                         if (e.key === 'Enter' && !e.shiftKey && !sendButton.disabled) {
                             e.preventDefault();
@@ -264,6 +461,7 @@ fun HTML.chatPage() {
                         }
                     });
 
+                    loadSystemPrompt();
                     messageInput.focus();
                 """)
             }

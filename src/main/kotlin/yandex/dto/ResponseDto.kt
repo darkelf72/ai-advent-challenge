@@ -1,4 +1,4 @@
-package dto
+package yandex.dto
 
 import kotlinx.serialization.Serializable
 

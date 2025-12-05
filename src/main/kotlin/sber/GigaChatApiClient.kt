@@ -1,7 +1,8 @@
+package sber
+
 import io.ktor.client.*
 import io.ktor.client.call.*
 import io.ktor.client.engine.cio.CIO
-import io.ktor.client.engine.cio.endpoint
 import io.ktor.client.plugins.contentnegotiation.ContentNegotiation
 import io.ktor.client.request.*
 import io.ktor.client.statement.*
@@ -12,7 +13,6 @@ import org.slf4j.LoggerFactory
 import java.security.KeyStore
 import java.util.*
 import javax.net.ssl.TrustManagerFactory
-import javax.net.ssl.X509TrustManager
 
 @Serializable
 data class GigaChatMessage(
@@ -52,7 +52,7 @@ data class OAuthTokenResponse(
 
 class GigaChatApiClient {
     private val logger = LoggerFactory.getLogger(GigaChatApiClient::class.java)
-    companion object {
+    private companion object {
         val apiKey: String = System.getProperty("gigaChatApiKey")
         const val BASE_URL = "https://gigachat.devices.sberbank.ru/api/v1"
         const val AUTH_URL = "https://ngw.devices.sberbank.ru:9443/api/v2/oauth"

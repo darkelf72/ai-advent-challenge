@@ -1,5 +1,4 @@
-package dto
-import kotlinx.serialization.SerialName
+package yandex.dto
 import kotlinx.serialization.Serializable
 
 @Serializable

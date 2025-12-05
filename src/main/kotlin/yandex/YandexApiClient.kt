@@ -1,19 +1,24 @@
-import dto.CompletionOptionsDto
-import dto.MessageDto
-import dto.RequestDto
-import dto.ResponseDto
-import io.ktor.client.*
-import io.ktor.client.call.*
-import io.ktor.client.engine.cio.*
-import io.ktor.client.plugins.contentnegotiation.*
-import io.ktor.client.request.*
-import io.ktor.client.statement.*
-import io.ktor.http.*
-import io.ktor.serialization.kotlinx.json.*
+package yandex
+
+import yandex.dto.CompletionOptionsDto
+import yandex.dto.MessageDto
+import yandex.dto.RequestDto
+import yandex.dto.ResponseDto
+import io.ktor.client.HttpClient
+import io.ktor.client.call.body
+import io.ktor.client.engine.cio.CIO
+import io.ktor.client.plugins.contentnegotiation.ContentNegotiation
+import io.ktor.client.request.header
+import io.ktor.client.request.post
+import io.ktor.client.request.setBody
+import io.ktor.client.statement.HttpResponse
+import io.ktor.http.ContentType
+import io.ktor.http.contentType
+import io.ktor.serialization.kotlinx.json.json
 import kotlinx.coroutines.runBlocking
 
-class ApiClient {
-    companion object {
+class YandexApiClient {
+    private companion object {
         const val URL = "https://llm.api.cloud.yandex.net/foundationModels/v1/completion"
         val apiKey: String = System.getProperty("yandexApiKey")
     }
@@ -24,7 +29,7 @@ class ApiClient {
         }
     }
 
-    private val systemMessage = MessageDto(
+    var systemPrompt = MessageDto(
         role = "system",
         text = """
             Ты — профессиональный технический писатель. Твоя задача: собрать требования для технического задания (ТЗ) по проекту «[название проекта]».
@@ -52,9 +57,10 @@ class ApiClient {
             - Сроки: [срок]
             - Бюджет: [сумма]
         """.trimIndent()
-
     )
     private val messageHistory = mutableListOf<MessageDto>()
+
+    fun clearHistory(): Unit = messageHistory.clear()
 
     fun sendRequest(query: String): String =
         runBlocking {
@@ -69,7 +75,7 @@ class ApiClient {
                         temperature = 0.5,
                         maxTokens = 100
                     ),
-                    messages = messageHistory + systemMessage
+                    messages = messageHistory + systemPrompt
                 )
 
                 println("Sending POST request to: $URL\n$request")

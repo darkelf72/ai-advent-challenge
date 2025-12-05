@@ -11,6 +11,7 @@ import io.ktor.server.response.*
 import io.ktor.server.routing.*
 import kotlinx.html.*
 import kotlinx.serialization.Serializable
+import yandex.YandexApiClient
 
 @Serializable
 data class ChatRequest(val message: String)
@@ -18,8 +19,8 @@ data class ChatRequest(val message: String)
 @Serializable
 data class ChatResponse(val question: String, val answer: String)
 
-private val apiClient = ApiClient()
-//private val apiClient = GigaChatApiClient()
+private val apiClient = YandexApiClient()
+//private val apiClient = sber.GigaChatApiClient()
 
 fun main() {
     embeddedServer(Netty, port = 9999, host = "0.0.0.0") {

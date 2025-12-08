@@ -25,6 +25,12 @@ data class SystemPromptRequest(val prompt: String)
 @Serializable
 data class SystemPromptResponse(val prompt: String)
 
+@Serializable
+data class TemperatureRequest(val temperature: Double)
+
+@Serializable
+data class TemperatureResponse(val temperature: Double)
+
 private val apiClient: ApiClientInterface = YandexApiClient()
 //private val apiClient: ApiClientInterface = sber.GigaChatApiClient()
 
@@ -46,6 +52,8 @@ fun Application.configureServer() {
         post("/api/send") { handleSendMessage(call) }
         get("/api/system-prompt") { handleGetSystemPrompt(call) }
         post("/api/system-prompt") { handleSetSystemPrompt(call) }
+        get("/api/temperature") { handleGetTemperature(call) }
+        post("/api/temperature") { handleSetTemperature(call) }
         post("/api/clear-history") { handleClearHistory(call) }
     }
 }
@@ -69,6 +77,16 @@ suspend fun handleSetSystemPrompt(call: ApplicationCall) {
 suspend fun handleClearHistory(call: ApplicationCall) {
     apiClient.clearMessages()
     call.respond(mapOf("status" to "ok"))
+}
+
+suspend fun handleGetTemperature(call: ApplicationCall) {
+    call.respond(TemperatureResponse(temperature = apiClient.getTemperature()))
+}
+
+suspend fun handleSetTemperature(call: ApplicationCall) {
+    val request = call.receive<TemperatureRequest>()
+    apiClient.setTemperature(request.temperature)
+    call.respond(TemperatureResponse(temperature = request.temperature))
 }
 
 fun HTML.chatPage() {
@@ -127,8 +145,13 @@ fun HTML.chatPage() {
                         font-weight: bold;
                         color: #666;
                     }
+                    .prompt-input-row {
+                        display: flex;
+                        gap: 10px;
+                        align-items: stretch;
+                    }
                     #systemPromptInput {
-                        width: 100%;
+                        flex: 1;
                         padding: 10px;
                         border: 2px solid #e0e0e0;
                         border-radius: 8px;
@@ -145,8 +168,9 @@ fun HTML.chatPage() {
                     }
                     .control-buttons {
                         display: flex;
+                        justify-content: flex-end;
+                        align-items: center;
                         gap: 10px;
-                        flex-wrap: wrap;
                     }
                     .control-btn {
                         padding: 8px 16px;
@@ -173,6 +197,58 @@ fun HTML.chatPage() {
                         background: #e74c3c;
                         color: white;
                     }
+                    .temperature-slider-area {
+                        display: flex;
+                        align-items: center;
+                        gap: 15px;
+                        padding: 10px 0;
+                    }
+                    .temperature-label {
+                        font-size: 13px;
+                        font-weight: bold;
+                        color: #666;
+                        white-space: nowrap;
+                    }
+                    .slider-container {
+                        flex: 1;
+                        display: flex;
+                        align-items: center;
+                        gap: 10px;
+                    }
+                    #temperatureSlider {
+                        flex: 1;
+                        height: 6px;
+                        border-radius: 3px;
+                        background: #e0e0e0;
+                        outline: none;
+                        -webkit-appearance: none;
+                    }
+                    #temperatureSlider::-webkit-slider-thumb {
+                        -webkit-appearance: none;
+                        appearance: none;
+                        width: 18px;
+                        height: 18px;
+                        border-radius: 50%;
+                        background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+                        cursor: pointer;
+                        box-shadow: 0 2px 4px rgba(0,0,0,0.2);
+                    }
+                    #temperatureSlider::-moz-range-thumb {
+                        width: 18px;
+                        height: 18px;
+                        border-radius: 50%;
+                        background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+                        cursor: pointer;
+                        border: none;
+                        box-shadow: 0 2px 4px rgba(0,0,0,0.2);
+                    }
+                    #temperatureValue {
+                        font-size: 14px;
+                        font-weight: bold;
+                        color: #667eea;
+                        min-width: 35px;
+                        text-align: right;
+                    }
                     @media (max-width: 600px) {
                         .controls-area {
                             padding: 10px;
@@ -181,7 +257,7 @@ fun HTML.chatPage() {
                             min-height: 60px;
                             font-size: 12px;
                         }
-                        .control-buttons {
+                        .prompt-input-row {
                             flex-direction: column;
                         }
                         .control-btn {
@@ -288,17 +364,39 @@ fun HTML.chatPage() {
             div(classes = "controls-area") {
                 div(classes = "system-prompt-area") {
                     div(classes = "system-prompt-label") { +"System Prompt:" }
-                    textArea {
-                        id = "systemPromptInput"
-                        placeholder = "Введите системный промпт..."
+                    div(classes = "prompt-input-row") {
+                        button {
+                            id = "setPromptButton"
+                            classes = setOf("control-btn", "btn-primary")
+                            +"Set"
+                        }
+                        textArea {
+                            id = "systemPromptInput"
+                            placeholder = "Введите системный промпт..."
+                        }
                     }
                 }
-                div(classes = "control-buttons") {
-                    button {
-                        id = "setPromptButton"
-                        classes = setOf("control-btn", "btn-primary")
-                        +"Set systemPrompt"
+
+                div(classes = "temperature-slider-area") {
+                    div(classes = "temperature-label") { +"Temperature:" }
+                    div(classes = "slider-container") {
+                        input {
+                            type = InputType.range
+                            id = "temperatureSlider"
+                            name = "temperature"
+                            attributes["min"] = "0"
+                            attributes["max"] = "1"
+                            attributes["step"] = "0.1"
+                            attributes["value"] = "0"
+                        }
+                        span {
+                            id = "temperatureValue"
+                            +"0.0"
+                        }
                     }
+                }
+
+                div(classes = "control-buttons") {
                     button {
                         id = "clearHistoryButton"
                         classes = setOf("control-btn", "btn-danger")
@@ -330,6 +428,43 @@ fun HTML.chatPage() {
                     const systemPromptInput = document.getElementById('systemPromptInput');
                     const setPromptButton = document.getElementById('setPromptButton');
                     const clearHistoryButton = document.getElementById('clearHistoryButton');
+                    const temperatureSlider = document.getElementById('temperatureSlider');
+                    const temperatureValue = document.getElementById('temperatureValue');
+
+                    const loadTemperature = async () => {
+                        try {
+                            const response = await fetch('/api/temperature');
+                            if (response.ok) {
+                                const data = await response.json();
+                                temperatureSlider.value = data.temperature;
+                                temperatureValue.textContent = data.temperature.toFixed(1);
+                            }
+                        } catch (error) {
+                            console.error('Failed to load temperature:', error);
+                        }
+                    };
+
+                    const updateTemperature = async (value) => {
+                        try {
+                            const response = await fetch('/api/temperature', {
+                                method: 'POST',
+                                headers: { 'Content-Type': 'application/json' },
+                                body: JSON.stringify({ temperature: parseFloat(value) })
+                            });
+
+                            if (!response.ok) {
+                                console.error('Failed to update temperature');
+                            }
+                        } catch (error) {
+                            console.error('Error updating temperature:', error);
+                        }
+                    };
+
+                    temperatureSlider.addEventListener('input', (e) => {
+                        const value = parseFloat(e.target.value);
+                        temperatureValue.textContent = value.toFixed(1);
+                        updateTemperature(value);
+                    });
 
                     const loadSystemPrompt = async () => {
                         try {
@@ -462,6 +597,7 @@ fun HTML.chatPage() {
                     });
 
                     loadSystemPrompt();
+                    loadTemperature();
                     messageInput.focus();
                 """)
             }

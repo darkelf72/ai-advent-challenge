@@ -30,6 +30,8 @@ class YandexApiClient : ApiClientInterface {
         }
     }
 
+    private var temperature: Double = 0.0
+
     private var systemPrompt: String = """
         Ты — профессиональный технический писатель. Твоя задача: собрать требования для технического задания (ТЗ) по проекту «[название проекта]».
 
@@ -69,6 +71,12 @@ class YandexApiClient : ApiClientInterface {
         messageHistory.clear()
     }
 
+    override fun getTemperature(): Double = temperature
+
+    override fun setTemperature(temperature: Double) {
+        this.temperature = temperature.coerceIn(0.0, 1.0)
+    }
+
     override fun sendRequest(query: String): String =
         runBlocking {
             try {
@@ -79,7 +87,7 @@ class YandexApiClient : ApiClientInterface {
                     modelUri = "gpt://b1g2vhjdd9rgjq542poc/yandexgpt/latest",
                     completionOptions = CompletionOptionsDto(
                         stream = false,
-                        temperature = 0.5,
+                        temperature = temperature,
                         maxTokens = 100
                     ),
                     messages = listOf(MessageDto("system", systemPrompt)) + messageHistory

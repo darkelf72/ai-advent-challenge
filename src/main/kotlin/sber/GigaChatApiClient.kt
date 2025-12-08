@@ -60,6 +60,8 @@ class GigaChatApiClient : ApiClientInterface {
         const val AUTH_URL = "https://ngw.devices.sberbank.ru:9443/api/v2/oauth"
     }
 
+    private var temperature: Double = 0.7
+
     private var systemPrompt: String = """
         Ты — профессиональный технический писатель. Твоя задача: собрать требования для технического задания (ТЗ) по проекту «[название проекта]».
 
@@ -97,6 +99,12 @@ class GigaChatApiClient : ApiClientInterface {
 
     override fun clearMessages() {
         messageHistory.clear()
+    }
+
+    override fun getTemperature(): Double = temperature
+
+    override fun setTemperature(temperature: Double) {
+        this.temperature = temperature.coerceIn(0.0, 1.0)
     }
 
     private val keystoreStream = this::class.java.classLoader.getResourceAsStream("truststore.jks")
@@ -162,7 +170,8 @@ class GigaChatApiClient : ApiClientInterface {
             val token = getAccessToken()
             val request = GigaChatRequest(
                 model = "GigaChat",
-                messages = listOf(GigaChatMessage(role = "system", content = systemPrompt)) + messageHistory
+                messages = listOf(GigaChatMessage(role = "system", content = systemPrompt)) + messageHistory,
+                temperature = temperature
             )
 
             val response: HttpResponse = httpClient.post("$BASE_URL/chat/completions") {

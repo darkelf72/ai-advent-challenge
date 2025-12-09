@@ -17,6 +17,9 @@ import io.ktor.http.ContentType
 import io.ktor.http.contentType
 import io.ktor.serialization.kotlinx.json.json
 import kotlinx.coroutines.runBlocking
+import kotlinx.serialization.encodeToString
+import kotlinx.serialization.json.Json
+import dto.TextJson
 
 class YandexApiClient : ApiClientInterface {
     private companion object {
@@ -30,10 +33,13 @@ class YandexApiClient : ApiClientInterface {
         }
     }
 
-    private var temperature: Double = 0.0
+    private var temperature: Double = 0.7
 
     private var systemPrompt: String = """
-        Ты — система искусственного интеллекта
+        Возвращай ответ в формате json.
+        Ответ должен состоять из двух полей:
+        1) message c текстом ответа 
+        2) elapsedTime со временем в миллисекундах, затраченным на обработку запроса и получение ответа
     """.trimIndent()
 
     private val messageHistory = mutableListOf<MessageDto>()
@@ -54,39 +60,44 @@ class YandexApiClient : ApiClientInterface {
         this.temperature = temperature.coerceIn(0.0, 1.0)
     }
 
-    override fun sendRequest(query: String): String =
-        runBlocking {
-            try {
-                val userMessage = MessageDto(role = "user", text = query)
-                messageHistory.add(userMessage)
-
-                val request = RequestDto(
-                    modelUri = "gpt://b1g2vhjdd9rgjq542poc/yandexgpt/latest",
-                    completionOptions = CompletionOptionsDto(
-                        stream = false,
-                        temperature = temperature,
-                        maxTokens = 500
-                    ),
-                    messages = listOf(MessageDto("system", systemPrompt)) + messageHistory
-                )
-
-                println("Sending POST request to: $URL\n$request")
-                val response: HttpResponse = client.post(URL) {
-                    header("accept", "application/json")
-                    header("content-type", "application/json")
-                    header("Authorization", "Api-Key $apiKey")
-                    contentType(ContentType.Application.Json)
-                    setBody(request)
-                }
-                println("Status: ${response.status}")
-                val body = response.body<ResponseDto>()
-                println(body)
-                val answer = body.result.alternatives.first().message.text
-                val assistantMessage = MessageDto(role = "assistant", text = answer)
-                messageHistory.add(assistantMessage)
-                answer
-            } catch (e: Exception) {
-                "Request failed: ${e.message}"
-            }
-        }
+    override fun sendRequest(query: String): String = runBlocking {
+        sendRequestAsync(query)
     }
+
+    private suspend fun sendRequestAsync(userPrompt: String): String =
+        try {
+            val userMessage = MessageDto(role = "user", text = userPrompt)
+            messageHistory.add(userMessage)
+
+            val request = RequestDto(
+                modelUri = "gpt://b1g2vhjdd9rgjq542poc/yandexgpt/latest",
+                completionOptions = CompletionOptionsDto(
+                    stream = false,
+                    temperature = temperature,
+                    maxTokens = 500
+                ),
+                messages = listOf(MessageDto("system", systemPrompt)) + messageHistory
+            )
+
+            println("Sending POST request to: $URL\n$request")
+            val response: HttpResponse = client.post(URL) {
+                header("accept", "application/json")
+                header("content-type", "application/json")
+                header("Authorization", "Api-Key $apiKey")
+                contentType(ContentType.Application.Json)
+                setBody(request)
+            }
+            println("Status: ${response.status}")
+            val body = response.body<ResponseDto>()
+            println(body)
+            val answer = body.result.alternatives.first().message.text
+            val parsedText = Json.decodeFromString<TextJson>(answer)
+            val assistantMessage = MessageDto(role = "assistant", text = parsedText.message)
+            messageHistory.add(assistantMessage)
+            parsedText.tokens = body.result.usage.totalTokens
+            parsedText.cost = 0.5
+            Json.encodeToString(parsedText)
+        } catch (e: Exception) {
+            "Request failed: ${e.message}"
+        }
+}

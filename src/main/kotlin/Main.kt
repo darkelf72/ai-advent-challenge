@@ -31,8 +31,8 @@ data class TemperatureRequest(val temperature: Double)
 @Serializable
 data class TemperatureResponse(val temperature: Double)
 
-private val apiClient: ApiClientInterface = YandexApiClient()
-//private val apiClient: ApiClientInterface = sber.GigaChatApiClient()
+//private val apiClient: ApiClientInterface = YandexApiClient()
+private val apiClient: ApiClientInterface = sber.GigaChatApiClient()
 
 fun main() {
     embeddedServer(Netty, port = 9999, host = "0.0.0.0") {

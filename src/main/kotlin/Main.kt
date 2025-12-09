@@ -17,7 +17,7 @@ import yandex.YandexApiClient
 data class ChatRequest(val message: String)
 
 @Serializable
-data class ChatResponse(val question: String, val answer: String)
+data class ChatResponse(val question: String, val answer: String, val result: String)
 
 @Serializable
 data class SystemPromptRequest(val prompt: String)
@@ -31,8 +31,21 @@ data class TemperatureRequest(val temperature: Double)
 @Serializable
 data class TemperatureResponse(val temperature: Double)
 
-//private val apiClient: ApiClientInterface = YandexApiClient()
-private val apiClient: ApiClientInterface = sber.GigaChatApiClient()
+@Serializable
+data class ClientSwitchRequest(val clientName: String)
+
+@Serializable
+data class ClientSwitchResponse(val clientName: String, val systemPrompt: String, val temperature: Double)
+
+// Карта всех доступных клиентов
+private val availableClients = mapOf(
+    "YandexGPT Pro 5.1" to YandexApiClient(),
+    "GigaChat 2 Lite" to sber.GigaChatApiClient()
+)
+
+// Текущий активный клиент
+private var currentClientName: String = "YandexGPT Pro 5.1"
+private var apiClient: ApiClientInterface = availableClients.getValue(currentClientName)
 
 fun main() {
     embeddedServer(Netty, port = 9999, host = "0.0.0.0") {
@@ -55,13 +68,16 @@ fun Application.configureServer() {
         get("/api/temperature") { handleGetTemperature(call) }
         post("/api/temperature") { handleSetTemperature(call) }
         post("/api/clear-history") { handleClearHistory(call) }
+        get("/api/current-client") { handleGetCurrentClient(call) }
+        post("/api/switch-client") { handleSwitchClient(call) }
+        get("/api/available-clients") { handleGetAvailableClients(call) }
     }
 }
 
 suspend fun handleSendMessage(call: ApplicationCall) {
     val request = call.receive<ChatRequest>()
-    val answer = apiClient.sendRequest(request.message)
-    call.respond(ChatResponse(question = request.message, answer = answer))
+    val apiResponse = apiClient.sendRequest(request.message)
+    call.respond(ChatResponse(question = request.message, answer = apiResponse.message, result = apiResponse.result))
 }
 
 suspend fun handleGetSystemPrompt(call: ApplicationCall) {
@@ -87,6 +103,33 @@ suspend fun handleSetTemperature(call: ApplicationCall) {
     val request = call.receive<TemperatureRequest>()
     apiClient.setTemperature(request.temperature)
     call.respond(TemperatureResponse(temperature = request.temperature))
+}
+
+suspend fun handleGetCurrentClient(call: ApplicationCall) {
+    call.respond(mapOf("clientName" to currentClientName))
+}
+
+suspend fun handleGetAvailableClients(call: ApplicationCall) {
+    call.respond(mapOf("clients" to availableClients.keys.toList()))
+}
+
+suspend fun handleSwitchClient(call: ApplicationCall) {
+    val request = call.receive<ClientSwitchRequest>()
+    val newClient = availableClients[request.clientName]
+
+    if (newClient != null) {
+        apiClient = newClient
+        currentClientName = request.clientName
+        call.respond(
+            ClientSwitchResponse(
+                clientName = currentClientName,
+                systemPrompt = apiClient.getSystemPrompt(),
+                temperature = apiClient.getTemperature()
+            )
+        )
+    } else {
+        call.respond(HttpStatusCode.BadRequest, mapOf("error" to "Unknown client: ${request.clientName}"))
+    }
 }
 
 fun HTML.chatPage() {
@@ -168,9 +211,34 @@ fun HTML.chatPage() {
                     }
                     .control-buttons {
                         display: flex;
-                        justify-content: flex-end;
+                        justify-content: space-between;
                         align-items: center;
                         gap: 10px;
+                    }
+                    .client-selector-area {
+                        display: flex;
+                        align-items: center;
+                        gap: 10px;
+                    }
+                    .client-selector-label {
+                        font-size: 13px;
+                        font-weight: bold;
+                        color: #666;
+                        white-space: nowrap;
+                    }
+                    #clientSelector {
+                        padding: 8px 12px;
+                        border: 2px solid #e0e0e0;
+                        border-radius: 6px;
+                        font-size: 13px;
+                        font-weight: bold;
+                        background: white;
+                        cursor: pointer;
+                        outline: none;
+                        transition: border-color 0.3s;
+                    }
+                    #clientSelector:focus {
+                        border-color: #667eea;
                     }
                     .control-btn {
                         padding: 8px 16px;
@@ -362,6 +430,29 @@ fun HTML.chatPage() {
             div(classes = "header") { +"AI Chat Assistant" }
 
             div(classes = "controls-area") {
+                div(classes = "control-buttons") {
+                    div(classes = "client-selector-area") {
+                        span(classes = "client-selector-label") { +"API Client:" }
+                        select {
+                            id = "clientSelector"
+                            option {
+                                value = "YandexGPT Pro 5.1"
+                                selected = true
+                                +"YandexGPT Pro 5.1"
+                            }
+                            option {
+                                value = "GigaChat 2 Lite"
+                                +"GigaChat 2 Lite"
+                            }
+                        }
+                    }
+                    button {
+                        id = "clearHistoryButton"
+                        classes = setOf("control-btn", "btn-danger")
+                        +"Clear history"
+                    }
+                }
+
                 div(classes = "system-prompt-area") {
                     div(classes = "prompt-input-row") {
                         button {
@@ -394,14 +485,6 @@ fun HTML.chatPage() {
                         }
                     }
                 }
-
-                div(classes = "control-buttons") {
-                    button {
-                        id = "clearHistoryButton"
-                        classes = setOf("control-btn", "btn-danger")
-                        +"Clear history"
-                    }
-                }
             }
 
             div(classes = "chat-box") { id = "chatBox" }
@@ -430,6 +513,7 @@ fun HTML.chatPage() {
                     const clearHistoryButton = document.getElementById('clearHistoryButton');
                     const temperatureSlider = document.getElementById('temperatureSlider');
                     const temperatureValue = document.getElementById('temperatureValue');
+                    const clientSelector = document.getElementById('clientSelector');
 
                     const loadTemperature = async () => {
                         try {
@@ -620,7 +704,7 @@ fun HTML.chatPage() {
 
                             if (response.ok) {
                                 const data = await response.json();
-                                addMessage(data.answer, false);
+                                addMessage(data.answer + '\n' + data.result, false);
                             } else {
                                 addMessage('Ошибка при получении ответа', false);
                             }
@@ -632,6 +716,55 @@ fun HTML.chatPage() {
                             messageInput.focus();
                         }
                     };
+
+                    const switchClient = async (clientName) => {
+                        try {
+                            clientSelector.disabled = true;
+                            const response = await fetch('/api/switch-client', {
+                                method: 'POST',
+                                headers: { 'Content-Type': 'application/json' },
+                                body: JSON.stringify({ clientName })
+                            });
+
+                            if (response.ok) {
+                                const data = await response.json();
+
+                                // Обновляем параметры
+                                systemPromptInput.value = data.systemPrompt;
+                                temperatureSlider.value = data.temperature;
+                                temperatureValue.textContent = data.temperature.toFixed(1);
+
+                                // Выводим сообщение в чат
+                                const messageDiv = document.createElement('div');
+                                messageDiv.className = 'message ai-message';
+
+                                const label = document.createElement('div');
+                                label.className = 'message-label ai-label';
+                                label.textContent = 'System';
+
+                                const content = document.createElement('div');
+                                content.className = 'message-content';
+                                content.textContent = `Переключено на ${data.clientName}`;
+                                content.style.fontStyle = 'italic';
+                                content.style.color = '#999';
+
+                                messageDiv.appendChild(label);
+                                messageDiv.appendChild(content);
+                                chatBox.appendChild(messageDiv);
+                                chatBox.scrollTop = chatBox.scrollHeight;
+                            } else {
+                                alert('Ошибка при переключении клиента');
+                            }
+                        } catch (error) {
+                            alert('Ошибка сети: ' + error.message);
+                        } finally {
+                            clientSelector.disabled = false;
+                        }
+                    };
+
+                    clientSelector.addEventListener('change', (e) => {
+                        switchClient(e.target.value);
+                    });
 
                     sendButton.addEventListener('click', sendMessage);
                     setPromptButton.addEventListener('click', setSystemPrompt);

@@ -1,6 +1,8 @@
 package sber
 
 import ApiClientInterface
+import dto.ApiResponse
+import dto.ApiResult
 import io.ktor.client.*
 import io.ktor.client.call.*
 import io.ktor.client.engine.cio.CIO
@@ -18,7 +20,8 @@ import org.slf4j.LoggerFactory
 import sber.dto.GigaChatMessage
 import sber.dto.GigaChatRequest
 import sber.dto.GigaChatResponse
-import dto.TextJson
+import java.math.BigDecimal
+import java.math.RoundingMode
 import java.security.KeyStore
 import java.util.*
 import javax.net.ssl.TrustManagerFactory
@@ -41,11 +44,7 @@ class GigaChatApiClient : ApiClientInterface {
     private var temperature: Double = 0.7
 
     private var systemPrompt: String = """
-        Возвращай ответ в формате json. Игнорируй любые другие варианты разметки ответа.
-        Нельзя в текст ответа добавлять разметку ```json. Нельзя оборачивать в блоки кода, только чистый валидный json
-        Ответ должен состоять из двух полей:
-        1) message c текстом ответа 
-        2) elapsedTime со временем в миллисекундах, затраченным на обработку запроса и получение ответа
+        Ты - генеративная языковая модель
     """.trimIndent()
 
     private val messageHistory = mutableListOf<GigaChatMessage>()
@@ -117,11 +116,11 @@ class GigaChatApiClient : ApiClientInterface {
         }
     }
 
-    override fun sendRequest(query: String): String = runBlocking {
+    override fun sendRequest(query: String): ApiResponse = runBlocking {
         sendRequestAsync(query)
     }
 
-    private suspend fun sendRequestAsync(userPrompt: String): String =
+    private suspend fun sendRequestAsync(userPrompt: String): ApiResponse =
         try {
             val userMessage = GigaChatMessage(role = "user", content = userPrompt)
             messageHistory.add(userMessage)
@@ -134,22 +133,27 @@ class GigaChatApiClient : ApiClientInterface {
             )
 
             println("Sending POST request to: $BASE_URL\n$request")
+            val startTime = System.currentTimeMillis()
             val response: HttpResponse = httpClient.post(BASE_URL) {
                 header(HttpHeaders.Authorization, "Bearer $token")
                 header(HttpHeaders.ContentType, "application/json")
                 setBody(request)
             }
+            val endTime = System.currentTimeMillis()
+            val executionTime = endTime - startTime
             println("Status: ${response.status}")
             val body = response.body<GigaChatResponse>()
             println(body)
             val answer = body.choices.first().message.content
-            val parsedText = Json.decodeFromString<TextJson>(answer)
-            val assistantMessage = GigaChatMessage(role = "assistant", content = parsedText.message)
+            val assistantMessage = GigaChatMessage(role = "assistant", content = answer)
             messageHistory.add(assistantMessage)
-            parsedText.tokens = body.usage.total_tokens
-            parsedText.cost = 0.5
-            Json.encodeToString(parsedText)
+            val apiResult = ApiResult(
+                elapsedTime = executionTime,
+                totalTokens = body.usage.total_tokens,
+                cost = BigDecimal(1500.0 / 1000000.0 * body.usage.total_tokens).setScale(2, RoundingMode.HALF_UP).toDouble()
+            )
+            ApiResponse(message = answer, result = Json.encodeToString(apiResult))
         } catch (e: Exception) {
-            "Request failed: ${e.message}"
+            ApiResponse("Request failed", e.localizedMessage)
         }
 }

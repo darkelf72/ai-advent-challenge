@@ -1,6 +1,8 @@
 package yandex
 
 import ApiClientInterface
+import dto.ApiResponse
+import dto.ApiResult
 import yandex.dto.CompletionOptionsDto
 import yandex.dto.MessageDto
 import yandex.dto.RequestDto
@@ -19,7 +21,8 @@ import io.ktor.serialization.kotlinx.json.json
 import kotlinx.coroutines.runBlocking
 import kotlinx.serialization.encodeToString
 import kotlinx.serialization.json.Json
-import dto.TextJson
+import java.math.BigDecimal
+import java.math.RoundingMode
 
 class YandexApiClient : ApiClientInterface {
     private companion object {
@@ -36,10 +39,7 @@ class YandexApiClient : ApiClientInterface {
     private var temperature: Double = 0.7
 
     private var systemPrompt: String = """
-        Возвращай ответ в формате json.
-        Ответ должен состоять из двух полей:
-        1) message c текстом ответа 
-        2) elapsedTime со временем в миллисекундах, затраченным на обработку запроса и получение ответа
+        Ты - генеративная языковая модель
     """.trimIndent()
 
     private val messageHistory = mutableListOf<MessageDto>()
@@ -60,17 +60,17 @@ class YandexApiClient : ApiClientInterface {
         this.temperature = temperature.coerceIn(0.0, 1.0)
     }
 
-    override fun sendRequest(query: String): String = runBlocking {
+    override fun sendRequest(query: String): ApiResponse = runBlocking {
         sendRequestAsync(query)
     }
 
-    private suspend fun sendRequestAsync(userPrompt: String): String =
+    private suspend fun sendRequestAsync(userPrompt: String): ApiResponse =
         try {
             val userMessage = MessageDto(role = "user", text = userPrompt)
             messageHistory.add(userMessage)
 
             val request = RequestDto(
-                modelUri = "gpt://b1g2vhjdd9rgjq542poc/yandexgpt/latest",
+                modelUri = "gpt://b1g2vhjdd9rgjq542poc/yandexgpt/rc",
                 completionOptions = CompletionOptionsDto(
                     stream = false,
                     temperature = temperature,
@@ -80,6 +80,7 @@ class YandexApiClient : ApiClientInterface {
             )
 
             println("Sending POST request to: $URL\n$request")
+            val startTime = System.currentTimeMillis()
             val response: HttpResponse = client.post(URL) {
                 header("accept", "application/json")
                 header("content-type", "application/json")
@@ -87,17 +88,21 @@ class YandexApiClient : ApiClientInterface {
                 contentType(ContentType.Application.Json)
                 setBody(request)
             }
+            val endTime = System.currentTimeMillis()
+            val executionTime = endTime - startTime
             println("Status: ${response.status}")
             val body = response.body<ResponseDto>()
             println(body)
             val answer = body.result.alternatives.first().message.text
-            val parsedText = Json.decodeFromString<TextJson>(answer)
-            val assistantMessage = MessageDto(role = "assistant", text = parsedText.message)
+            val assistantMessage = MessageDto(role = "assistant", text = answer)
             messageHistory.add(assistantMessage)
-            parsedText.tokens = body.result.usage.totalTokens
-            parsedText.cost = 0.5
-            Json.encodeToString(parsedText)
+            val apiResult = ApiResult(
+                elapsedTime = executionTime,
+                totalTokens = body.result.usage.totalTokens,
+                cost = BigDecimal(1500.0 / 1000000.0 * body.result.usage.totalTokens).setScale(2, RoundingMode.HALF_UP).toDouble()
+            )
+            ApiResponse(message = answer, result = Json.encodeToString(apiResult))
         } catch (e: Exception) {
-            "Request failed: ${e.message}"
+            ApiResponse("Request failed", e.localizedMessage)
         }
 }

@@ -1,5 +1,7 @@
+import dto.ApiResponse
+
 interface ApiClientInterface {
-    fun sendRequest(query: String): String
+    fun sendRequest(query: String): ApiResponse
     fun getSystemPrompt(): String
     fun setSystemPrompt(prompt: String)
     fun clearMessages()

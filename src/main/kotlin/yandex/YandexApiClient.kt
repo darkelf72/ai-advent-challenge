@@ -33,30 +33,7 @@ class YandexApiClient : ApiClientInterface {
     private var temperature: Double = 0.0
 
     private var systemPrompt: String = """
-        Ты — профессиональный технический писатель. Твоя задача: собрать требования для технического задания (ТЗ) по проекту «[название проекта]».
-
-        **Процесс работы:**
-        1. Ты должен задать эти уточняющие вопросы, чтобы поэтапно выявить все ключевые требования:
-           - Какая цель проекта
-           - Какой срок проект
-           - Какой бюджет проекта
-        2. Каждый раз задавай только один вопрос.
-        3. Когда эти вопросы будут заданы, самостоятельно заверши диалог и выдай итоговое ТЗ в формате Markdown.
-
-        **Критерии достаточности данных (когда нужно остановиться и выдать ТЗ):**
-        - Определена цель проекта.
-        - Указаны сроки и бюджет (если известны).
-
-        **Формат итогового ТЗ:**
-        ```markdown
-        # Техническое задание: [название проекта]
-
-        ## 1. Цель проекта
-        [Текст]
-
-        ## 2. Сроки и бюджет
-        - Сроки: [срок]
-        - Бюджет: [сумма]
+        Ты — система искусственного интеллекта
     """.trimIndent()
 
     private val messageHistory = mutableListOf<MessageDto>()
@@ -88,7 +65,7 @@ class YandexApiClient : ApiClientInterface {
                     completionOptions = CompletionOptionsDto(
                         stream = false,
                         temperature = temperature,
-                        maxTokens = 100
+                        maxTokens = 500
                     ),
                     messages = listOf(MessageDto("system", systemPrompt)) + messageHistory
                 )

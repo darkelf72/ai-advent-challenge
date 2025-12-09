@@ -363,7 +363,6 @@ fun HTML.chatPage() {
 
             div(classes = "controls-area") {
                 div(classes = "system-prompt-area") {
-                    div(classes = "system-prompt-label") { +"System Prompt:" }
                     div(classes = "prompt-input-row") {
                         button {
                             id = "setPromptButton"
@@ -385,7 +384,7 @@ fun HTML.chatPage() {
                             id = "temperatureSlider"
                             name = "temperature"
                             attributes["min"] = "0"
-                            attributes["max"] = "1"
+                            attributes["max"] = "1.0"
                             attributes["step"] = "0.1"
                             attributes["value"] = "0"
                         }
@@ -421,7 +420,8 @@ fun HTML.chatPage() {
         }
         script {
             unsafe {
-                raw("""
+                raw(
+                    $$"""
                     const chatBox = document.getElementById('chatBox');
                     const messageInput = document.getElementById('messageInput');
                     const sendButton = document.getElementById('sendButton');
@@ -452,7 +452,25 @@ fun HTML.chatPage() {
                                 body: JSON.stringify({ temperature: parseFloat(value) })
                             });
 
-                            if (!response.ok) {
+                            if (response.ok) {
+                                const messageDiv = document.createElement('div');
+                                messageDiv.className = 'message ai-message';
+
+                                const label = document.createElement('div');
+                                label.className = 'message-label ai-label';
+                                label.textContent = 'System';
+
+                                const content = document.createElement('div');
+                                content.className = 'message-content';
+                                content.textContent = `Установлена температура ${value.toFixed(1)}`;
+                                content.style.fontStyle = 'italic';
+                                content.style.color = '#999';
+
+                                messageDiv.appendChild(label);
+                                messageDiv.appendChild(content);
+                                chatBox.appendChild(messageDiv);
+                                chatBox.scrollTop = chatBox.scrollHeight;
+                            } else {
                                 console.error('Failed to update temperature');
                             }
                         } catch (error) {
@@ -463,6 +481,9 @@ fun HTML.chatPage() {
                     temperatureSlider.addEventListener('input', (e) => {
                         const value = parseFloat(e.target.value);
                         temperatureValue.textContent = value.toFixed(1);
+                    });
+                    temperatureSlider.addEventListener('change', (e) => {
+                        const value = parseFloat(e.target.value);
                         updateTemperature(value);
                     });
 
@@ -494,7 +515,23 @@ fun HTML.chatPage() {
                             });
 
                             if (response.ok) {
-                                alert('System prompt успешно обновлен!');
+                                const messageDiv = document.createElement('div');
+                                messageDiv.className = 'message ai-message';
+
+                                const label = document.createElement('div');
+                                label.className = 'message-label ai-label';
+                                label.textContent = 'System';
+
+                                const content = document.createElement('div');
+                                content.className = 'message-content';
+                                content.textContent = `Установлен системный промпт: ${prompt}`;
+                                content.style.fontStyle = 'italic';
+                                content.style.color = '#999';
+
+                                messageDiv.appendChild(label);
+                                messageDiv.appendChild(content);
+                                chatBox.appendChild(messageDiv);
+                                chatBox.scrollTop = chatBox.scrollHeight;
                             } else {
                                 alert('Ошибка при обновлении system prompt');
                             }
@@ -506,10 +543,6 @@ fun HTML.chatPage() {
                     };
 
                     const clearHistory = async () => {
-                        if (!confirm('Вы уверены, что хотите очистить историю сообщений?')) {
-                            return;
-                        }
-
                         try {
                             clearHistoryButton.disabled = true;
                             const response = await fetch('/api/clear-history', {
@@ -518,8 +551,23 @@ fun HTML.chatPage() {
                             });
 
                             if (response.ok) {
-                                chatBox.innerHTML = '';
-                                alert('История успешно очищена!');
+                                const messageDiv = document.createElement('div');
+                                messageDiv.className = 'message ai-message';
+
+                                const label = document.createElement('div');
+                                label.className = 'message-label ai-label';
+                                label.textContent = 'System';
+
+                                const content = document.createElement('div');
+                                content.className = 'message-content';
+                                content.textContent = 'История сообщений была очищена';
+                                content.style.fontStyle = 'italic';
+                                content.style.color = '#999';
+
+                                messageDiv.appendChild(label);
+                                messageDiv.appendChild(content);
+                                chatBox.appendChild(messageDiv);
+                                chatBox.scrollTop = chatBox.scrollHeight;
                             } else {
                                 alert('Ошибка при очистке истории');
                             }
@@ -532,10 +580,10 @@ fun HTML.chatPage() {
 
                     const addMessage = (text, isUser) => {
                         const messageDiv = document.createElement('div');
-                        messageDiv.className = `message ${'$'}{isUser ? 'user' : 'ai'}-message`;
+                        messageDiv.className = `message ${isUser ? 'user' : 'ai'}-message`;
 
                         const label = document.createElement('div');
-                        label.className = `message-label ${'$'}{isUser ? 'user' : 'ai'}-label`;
+                        label.className = `message-label ${isUser ? 'user' : 'ai'}-label`;
                         label.textContent = isUser ? 'You' : 'AI';
 
                         const content = document.createElement('div');
@@ -599,7 +647,8 @@ fun HTML.chatPage() {
                     loadSystemPrompt();
                     loadTemperature();
                     messageInput.focus();
-                """)
+                """
+                )
             }
         }
     }

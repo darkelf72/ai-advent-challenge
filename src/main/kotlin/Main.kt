@@ -137,6 +137,9 @@ fun HTML.chatPage() {
         title { +"AI Chat" }
         meta(charset = "utf-8")
         meta(name = "viewport", content = "width=device-width, initial-scale=1")
+        script {
+            src = "https://cdn.jsdelivr.net/npm/marked/marked.min.js"
+        }
         style {
             unsafe {
                 raw("""
@@ -371,6 +374,92 @@ fun HTML.chatPage() {
                         background: white;
                         color: #333;
                         max-width: 80%;
+                    }
+                    .message-content h1, .message-content h2, .message-content h3,
+                    .message-content h4, .message-content h5, .message-content h6 {
+                        margin: 12px 0 8px 0;
+                        font-weight: bold;
+                        line-height: 1.3;
+                    }
+                    .message-content h1 { font-size: 1.8em; }
+                    .message-content h2 { font-size: 1.5em; }
+                    .message-content h3 { font-size: 1.3em; }
+                    .message-content h4 { font-size: 1.1em; }
+                    .message-content h5 { font-size: 1em; }
+                    .message-content h6 { font-size: 0.9em; }
+                    .message-content p {
+                        margin: 8px 0;
+                        line-height: 1.6;
+                    }
+                    .message-content code {
+                        background: #f4f4f4;
+                        padding: 2px 6px;
+                        border-radius: 4px;
+                        font-family: 'Courier New', Courier, monospace;
+                        font-size: 0.9em;
+                    }
+                    .user-message .message-content code {
+                        background: rgba(255, 255, 255, 0.2);
+                    }
+                    .message-content pre {
+                        background: #2d2d2d;
+                        color: #f8f8f2;
+                        padding: 12px;
+                        border-radius: 6px;
+                        overflow-x: auto;
+                        margin: 8px 0;
+                    }
+                    .message-content pre code {
+                        background: transparent;
+                        padding: 0;
+                        color: inherit;
+                    }
+                    .message-content ul, .message-content ol {
+                        margin: 8px 0;
+                        padding-left: 24px;
+                    }
+                    .message-content li {
+                        margin: 4px 0;
+                        line-height: 1.6;
+                    }
+                    .message-content blockquote {
+                        border-left: 4px solid #667eea;
+                        padding-left: 12px;
+                        margin: 8px 0;
+                        color: #666;
+                        font-style: italic;
+                    }
+                    .message-content a {
+                        color: #667eea;
+                        text-decoration: none;
+                    }
+                    .message-content a:hover {
+                        text-decoration: underline;
+                    }
+                    .message-content table {
+                        border-collapse: collapse;
+                        width: 100%;
+                        margin: 8px 0;
+                    }
+                    .message-content th, .message-content td {
+                        border: 1px solid #ddd;
+                        padding: 8px;
+                        text-align: left;
+                    }
+                    .message-content th {
+                        background: #f4f4f4;
+                        font-weight: bold;
+                    }
+                    .message-content hr {
+                        border: none;
+                        border-top: 2px solid #e0e0e0;
+                        margin: 16px 0;
+                    }
+                    .message-content strong {
+                        font-weight: bold;
+                    }
+                    .message-content em {
+                        font-style: italic;
                     }
                     .input-area {
                         padding: 20px;
@@ -672,7 +761,13 @@ fun HTML.chatPage() {
 
                         const content = document.createElement('div');
                         content.className = 'message-content';
-                        content.textContent = text;
+
+                        // Для AI сообщений используем Markdown рендеринг
+                        if (isUser) {
+                            content.textContent = text;
+                        } else {
+                            content.innerHTML = marked.parse(text);
+                        }
 
                         messageDiv.appendChild(label);
                         messageDiv.appendChild(content);

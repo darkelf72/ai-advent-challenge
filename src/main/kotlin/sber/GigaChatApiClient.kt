@@ -86,8 +86,8 @@ class GigaChatApiClient : ApiClientInterface {
         }
         engine {
             endpoint {
-                connectTimeout = 30000
-                requestTimeout = 60000
+                connectTimeout = 60000
+                requestTimeout = 120000
             }
             https {
                 this.trustManager = trustManagerFactory.trustManagers[0] as X509TrustManager

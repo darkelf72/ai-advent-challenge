@@ -10,6 +10,7 @@ import yandex.dto.ResponseDto
 import io.ktor.client.HttpClient
 import io.ktor.client.call.body
 import io.ktor.client.engine.cio.CIO
+import io.ktor.client.engine.cio.endpoint
 import io.ktor.client.plugins.contentnegotiation.ContentNegotiation
 import io.ktor.client.request.header
 import io.ktor.client.request.post
@@ -33,6 +34,12 @@ class YandexApiClient : ApiClientInterface {
     private val client = HttpClient(CIO) {
         install(ContentNegotiation) {
             json()
+        }
+        engine {
+            endpoint {
+                connectTimeout = 60000
+                requestTimeout = 120000
+            }
         }
     }
 
@@ -109,7 +116,7 @@ class YandexApiClient : ApiClientInterface {
                 promptTokens = body.result.usage.inputTextTokens,
                 completionTokens = body.result.usage.completionTokens,
                 totalTokens = body.result.usage.totalTokens,
-                cost = BigDecimal(1500.0 / 1000000.0 * body.result.usage.totalTokens).setScale(2, RoundingMode.HALF_UP).toDouble()
+                cost = BigDecimal(0.4 / 1000 * body.result.usage.totalTokens).setScale(2, RoundingMode.HALF_UP).toDouble()
             )
             ApiResponse(message = answer, result = Json.encodeToString(apiResult))
         } catch (e: Exception) {

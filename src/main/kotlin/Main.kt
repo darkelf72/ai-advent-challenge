@@ -407,9 +407,18 @@ fun HTML.chatPage() {
                         font-weight: bold;
                         margin-bottom: 5px;
                         color: #666;
+                        display: flex;
+                        justify-content: space-between;
+                        align-items: center;
                     }
                     .user-label { color: #667eea; }
                     .ai-label { color: #764ba2; }
+                    .message-time {
+                        font-size: 10px;
+                        font-weight: normal;
+                        color: #999;
+                        font-family: 'Courier New', Courier, monospace;
+                    }
                     .message-content {
                         background: white;
                         padding: 12px 16px;
@@ -696,7 +705,16 @@ fun HTML.chatPage() {
 
                                 const label = document.createElement('div');
                                 label.className = 'message-label ai-label';
-                                label.textContent = 'System';
+
+                                const labelText = document.createElement('span');
+                                labelText.textContent = 'System';
+
+                                const timeStamp = document.createElement('span');
+                                timeStamp.className = 'message-time';
+                                timeStamp.textContent = formatTimestamp();
+
+                                label.appendChild(labelText);
+                                label.appendChild(timeStamp);
 
                                 const content = document.createElement('div');
                                 content.className = 'message-content';
@@ -751,7 +769,16 @@ fun HTML.chatPage() {
 
                                 const label = document.createElement('div');
                                 label.className = 'message-label ai-label';
-                                label.textContent = 'System';
+
+                                const labelText = document.createElement('span');
+                                labelText.textContent = 'System';
+
+                                const timeStamp = document.createElement('span');
+                                timeStamp.className = 'message-time';
+                                timeStamp.textContent = formatTimestamp();
+
+                                label.appendChild(labelText);
+                                label.appendChild(timeStamp);
 
                                 const content = document.createElement('div');
                                 content.className = 'message-content';
@@ -824,7 +851,16 @@ fun HTML.chatPage() {
 
                                 const label = document.createElement('div');
                                 label.className = 'message-label ai-label';
-                                label.textContent = 'System';
+
+                                const labelText = document.createElement('span');
+                                labelText.textContent = 'System';
+
+                                const timeStamp = document.createElement('span');
+                                timeStamp.className = 'message-time';
+                                timeStamp.textContent = formatTimestamp();
+
+                                label.appendChild(labelText);
+                                label.appendChild(timeStamp);
 
                                 const content = document.createElement('div');
                                 content.className = 'message-content';
@@ -860,7 +896,16 @@ fun HTML.chatPage() {
 
                                 const label = document.createElement('div');
                                 label.className = 'message-label ai-label';
-                                label.textContent = 'System';
+
+                                const labelText = document.createElement('span');
+                                labelText.textContent = 'System';
+
+                                const timeStamp = document.createElement('span');
+                                timeStamp.className = 'message-time';
+                                timeStamp.textContent = formatTimestamp();
+
+                                label.appendChild(labelText);
+                                label.appendChild(timeStamp);
 
                                 const content = document.createElement('div');
                                 content.className = 'message-content';
@@ -882,13 +927,31 @@ fun HTML.chatPage() {
                         }
                     };
 
+                    const formatTimestamp = () => {
+                        const now = new Date();
+                        const hours = String(now.getHours()).padStart(2, '0');
+                        const minutes = String(now.getMinutes()).padStart(2, '0');
+                        const seconds = String(now.getSeconds()).padStart(2, '0');
+                        const milliseconds = String(now.getMilliseconds()).padStart(3, '0');
+                        return `${hours}:${minutes}:${seconds}.${milliseconds}`;
+                    };
+
                     const addMessage = (text, isUser) => {
                         const messageDiv = document.createElement('div');
                         messageDiv.className = `message ${isUser ? 'user' : 'ai'}-message`;
 
                         const label = document.createElement('div');
                         label.className = `message-label ${isUser ? 'user' : 'ai'}-label`;
-                        label.textContent = isUser ? 'You' : 'AI';
+
+                        const labelText = document.createElement('span');
+                        labelText.textContent = isUser ? 'You' : 'AI';
+
+                        const timeStamp = document.createElement('span');
+                        timeStamp.className = 'message-time';
+                        timeStamp.textContent = formatTimestamp();
+
+                        label.appendChild(labelText);
+                        label.appendChild(timeStamp);
 
                         const content = document.createElement('div');
                         content.className = 'message-content';
@@ -969,7 +1032,16 @@ fun HTML.chatPage() {
 
                                 const label = document.createElement('div');
                                 label.className = 'message-label ai-label';
-                                label.textContent = 'System';
+
+                                const labelText = document.createElement('span');
+                                labelText.textContent = 'System';
+
+                                const timeStamp = document.createElement('span');
+                                timeStamp.className = 'message-time';
+                                timeStamp.textContent = formatTimestamp();
+
+                                label.appendChild(labelText);
+                                label.appendChild(timeStamp);
 
                                 const content = document.createElement('div');
                                 content.className = 'message-content';

@@ -42,6 +42,8 @@ class YandexApiClient : ApiClientInterface {
         Ты - генеративная языковая модель
     """.trimIndent()
 
+    private var maxTokens: Int = 100
+
     private val messageHistory = mutableListOf<MessageDto>()
 
     override fun getSystemPrompt(): String = systemPrompt
@@ -60,6 +62,12 @@ class YandexApiClient : ApiClientInterface {
         this.temperature = temperature.coerceIn(0.0, 1.0)
     }
 
+    override fun getMaxTokens(): Int = maxTokens
+
+    override fun setMaxTokens(maxTokens: Int) {
+        this.maxTokens = maxTokens.coerceIn(1, 10000)
+    }
+
     override fun sendRequest(query: String): ApiResponse = runBlocking {
         sendRequestAsync(query)
     }
@@ -74,7 +82,7 @@ class YandexApiClient : ApiClientInterface {
                 completionOptions = CompletionOptionsDto(
                     stream = false,
                     temperature = temperature,
-                    maxTokens = 500
+                    maxTokens = maxTokens
                 ),
                 messages = listOf(MessageDto("system", systemPrompt)) + messageHistory
             )
@@ -98,6 +106,8 @@ class YandexApiClient : ApiClientInterface {
             messageHistory.add(assistantMessage)
             val apiResult = ApiResult(
                 elapsedTime = executionTime,
+                promptTokens = body.result.usage.inputTextTokens,
+                completionTokens = body.result.usage.completionTokens,
                 totalTokens = body.result.usage.totalTokens,
                 cost = BigDecimal(1500.0 / 1000000.0 * body.result.usage.totalTokens).setScale(2, RoundingMode.HALF_UP).toDouble()
             )

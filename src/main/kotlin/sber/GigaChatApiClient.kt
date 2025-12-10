@@ -47,6 +47,8 @@ class GigaChatApiClient : ApiClientInterface {
         Ты - генеративная языковая модель
     """.trimIndent()
 
+    private var maxTokens: Int = 100
+
     private val messageHistory = mutableListOf<GigaChatMessage>()
 
     override fun getSystemPrompt(): String = systemPrompt
@@ -63,6 +65,12 @@ class GigaChatApiClient : ApiClientInterface {
 
     override fun setTemperature(temperature: Double) {
         this.temperature = temperature.coerceIn(0.0, 1.0)
+    }
+
+    override fun getMaxTokens(): Int = maxTokens
+
+    override fun setMaxTokens(maxTokens: Int) {
+        this.maxTokens = maxTokens.coerceIn(1, 10000)
     }
 
     private val keystoreStream = this::class.java.classLoader.getResourceAsStream("truststore.jks")
@@ -129,7 +137,8 @@ class GigaChatApiClient : ApiClientInterface {
             val request = GigaChatRequest(
                 model = "GigaChat",
                 messages = listOf(GigaChatMessage(role = "system", content = systemPrompt)) + messageHistory,
-                temperature = temperature
+                temperature = temperature,
+                max_tokens = maxTokens
             )
 
             println("Sending POST request to: $BASE_URL\n$request")
@@ -149,6 +158,8 @@ class GigaChatApiClient : ApiClientInterface {
             messageHistory.add(assistantMessage)
             val apiResult = ApiResult(
                 elapsedTime = executionTime,
+                promptTokens = body.usage.prompt_tokens,
+                completionTokens = body.usage.completion_tokens,
                 totalTokens = body.usage.total_tokens,
                 cost = BigDecimal(1500.0 / 1000000.0 * body.usage.total_tokens).setScale(2, RoundingMode.HALF_UP).toDouble()
             )

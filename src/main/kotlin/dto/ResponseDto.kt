@@ -11,6 +11,8 @@ data class ApiResponse(
 @Serializable
 data class ApiResult(
     val elapsedTime: Long,
+    val promptTokens: Int,
+    val completionTokens: Int,
     var totalTokens: Int,
     var cost: Double
 )

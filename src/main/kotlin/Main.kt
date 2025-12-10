@@ -32,6 +32,12 @@ data class TemperatureRequest(val temperature: Double)
 data class TemperatureResponse(val temperature: Double)
 
 @Serializable
+data class MaxTokensRequest(val maxTokens: Int)
+
+@Serializable
+data class MaxTokensResponse(val maxTokens: Int)
+
+@Serializable
 data class ClientSwitchRequest(val clientName: String)
 
 @Serializable
@@ -67,6 +73,8 @@ fun Application.configureServer() {
         post("/api/system-prompt") { handleSetSystemPrompt(call) }
         get("/api/temperature") { handleGetTemperature(call) }
         post("/api/temperature") { handleSetTemperature(call) }
+        get("/api/max-tokens") { handleGetMaxTokens(call) }
+        post("/api/max-tokens") { handleSetMaxTokens(call) }
         post("/api/clear-history") { handleClearHistory(call) }
         get("/api/current-client") { handleGetCurrentClient(call) }
         post("/api/switch-client") { handleSwitchClient(call) }
@@ -103,6 +111,16 @@ suspend fun handleSetTemperature(call: ApplicationCall) {
     val request = call.receive<TemperatureRequest>()
     apiClient.setTemperature(request.temperature)
     call.respond(TemperatureResponse(temperature = request.temperature))
+}
+
+suspend fun handleGetMaxTokens(call: ApplicationCall) {
+    call.respond(MaxTokensResponse(maxTokens = apiClient.getMaxTokens()))
+}
+
+suspend fun handleSetMaxTokens(call: ApplicationCall) {
+    val request = call.receive<MaxTokensRequest>()
+    apiClient.setMaxTokens(request.maxTokens)
+    call.respond(MaxTokensResponse(maxTokens = request.maxTokens))
 }
 
 suspend fun handleGetCurrentClient(call: ApplicationCall) {
@@ -319,6 +337,41 @@ fun HTML.chatPage() {
                         color: #667eea;
                         min-width: 35px;
                         text-align: right;
+                    }
+                    .max-tokens-container {
+                        display: flex;
+                        align-items: center;
+                        gap: 10px;
+                        margin-left: 20px;
+                    }
+                    .max-tokens-label {
+                        font-size: 13px;
+                        font-weight: bold;
+                        color: #666;
+                        white-space: nowrap;
+                    }
+                    #maxTokensInput {
+                        width: 100px;
+                        padding: 6px 10px;
+                        border: 2px solid #e0e0e0;
+                        border-radius: 6px;
+                        font-size: 14px;
+                        font-weight: bold;
+                        color: #667eea;
+                        text-align: center;
+                        outline: none;
+                        transition: border-color 0.3s;
+                    }
+                    #maxTokensInput:focus {
+                        border-color: #667eea;
+                    }
+                    #maxTokensInput::-webkit-inner-spin-button,
+                    #maxTokensInput::-webkit-outer-spin-button {
+                        -webkit-appearance: none;
+                        margin: 0;
+                    }
+                    #maxTokensInput[type=number] {
+                        -moz-appearance: textfield;
                     }
                     @media (max-width: 600px) {
                         .controls-area {
@@ -573,6 +626,17 @@ fun HTML.chatPage() {
                             +"0.0"
                         }
                     }
+                    div(classes = "max-tokens-container") {
+                        div(classes = "max-tokens-label") { +"Max Tokens:" }
+                        input {
+                            type = InputType.number
+                            id = "maxTokensInput"
+                            name = "maxTokens"
+                            attributes["min"] = "1"
+                            attributes["max"] = "10000"
+                            attributes["value"] = "100"
+                        }
+                    }
                 }
             }
 
@@ -602,6 +666,7 @@ fun HTML.chatPage() {
                     const clearHistoryButton = document.getElementById('clearHistoryButton');
                     const temperatureSlider = document.getElementById('temperatureSlider');
                     const temperatureValue = document.getElementById('temperatureValue');
+                    const maxTokensInput = document.getElementById('maxTokensInput');
                     const clientSelector = document.getElementById('clientSelector');
 
                     const loadTemperature = async () => {
@@ -658,6 +723,72 @@ fun HTML.chatPage() {
                     temperatureSlider.addEventListener('change', (e) => {
                         const value = parseFloat(e.target.value);
                         updateTemperature(value);
+                    });
+
+                    const loadMaxTokens = async () => {
+                        try {
+                            const response = await fetch('/api/max-tokens');
+                            if (response.ok) {
+                                const data = await response.json();
+                                maxTokensInput.value = data.maxTokens;
+                            }
+                        } catch (error) {
+                            console.error('Failed to load max tokens:', error);
+                        }
+                    };
+
+                    const updateMaxTokens = async (value) => {
+                        try {
+                            const response = await fetch('/api/max-tokens', {
+                                method: 'POST',
+                                headers: { 'Content-Type': 'application/json' },
+                                body: JSON.stringify({ maxTokens: parseInt(value) })
+                            });
+
+                            if (response.ok) {
+                                const messageDiv = document.createElement('div');
+                                messageDiv.className = 'message ai-message';
+
+                                const label = document.createElement('div');
+                                label.className = 'message-label ai-label';
+                                label.textContent = 'System';
+
+                                const content = document.createElement('div');
+                                content.className = 'message-content';
+                                content.textContent = `Установлено максимальное количество токенов: ${value}`;
+                                content.style.fontStyle = 'italic';
+                                content.style.color = '#999';
+
+                                messageDiv.appendChild(label);
+                                messageDiv.appendChild(content);
+                                chatBox.appendChild(messageDiv);
+                                chatBox.scrollTop = chatBox.scrollHeight;
+                            } else {
+                                console.error('Failed to update max tokens');
+                            }
+                        } catch (error) {
+                            console.error('Error updating max tokens:', error);
+                        }
+                    };
+
+                    maxTokensInput.addEventListener('input', (e) => {
+                        // Разрешаем только цифры
+                        e.target.value = e.target.value.replace(/[^0-9]/g, '');
+                    });
+
+                    maxTokensInput.addEventListener('keydown', (e) => {
+                        if (e.key === 'Enter') {
+                            e.preventDefault();
+                            maxTokensInput.blur();
+                        }
+                    });
+
+                    maxTokensInput.addEventListener('change', (e) => {
+                        let value = parseInt(e.target.value);
+                        if (isNaN(value) || value < 1) value = 1;
+                        if (value > 10000) value = 10000;
+                        maxTokensInput.value = value;
+                        updateMaxTokens(value);
                     });
 
                     const loadSystemPrompt = async () => {
@@ -829,6 +960,9 @@ fun HTML.chatPage() {
                                 temperatureSlider.value = data.temperature;
                                 temperatureValue.textContent = data.temperature.toFixed(1);
 
+                                // Загружаем maxTokens для нового клиента
+                                await loadMaxTokens();
+
                                 // Выводим сообщение в чат
                                 const messageDiv = document.createElement('div');
                                 messageDiv.className = 'message ai-message';
@@ -874,6 +1008,7 @@ fun HTML.chatPage() {
 
                     loadSystemPrompt();
                     loadTemperature();
+                    loadMaxTokens();
                     messageInput.focus();
                 """
                 )

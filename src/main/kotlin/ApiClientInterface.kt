@@ -7,4 +7,6 @@ interface ApiClientInterface {
     fun clearMessages()
     fun getTemperature(): Double
     fun setTemperature(temperature: Double)
+    fun getMaxTokens(): Int
+    fun setMaxTokens(maxTokens: Int)
 }

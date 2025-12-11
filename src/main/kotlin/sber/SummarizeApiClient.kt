@@ -23,7 +23,7 @@ import java.util.*
  * Наследует общую логику от BaseApiClient и реализует специфику GigaChat API.
  * Включает логику OAuth аутентификации с кешированием токена.
  */
-class GigaChatApiClient(
+class SummarizeApiClient(
     httpClient: HttpClient,
     apiClientConfig: ApiClientConfig
 ) : BaseApiClient(httpClient, apiClientConfig) {

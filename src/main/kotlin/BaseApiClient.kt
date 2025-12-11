@@ -42,11 +42,12 @@ data class StandardApiResponse(
  * - calculateCost: формула расчета стоимости
  */
 abstract class BaseApiClient(
-    protected val httpClient: HttpClient
+    protected val httpClient: HttpClient,
+    protected val apiClientConfig: ApiClientConfig
 ) : ApiClientInterface {
 
     // Конфигурация клиента (общая для всех реализаций)
-    override var config: ApiClientConfig = ApiClientConfig()
+    override var config: ApiClientConfig = apiClientConfig
 
     // История сообщений (общая для всех реализаций)
     private val _messageHistory = mutableListOf<ChatMessage>()

@@ -3,6 +3,7 @@ package yandex
 import BaseApiClient
 import RequestContext
 import StandardApiResponse
+import config.ApiClientConfig
 import io.ktor.client.*
 import io.ktor.client.call.*
 import io.ktor.client.request.*
@@ -20,8 +21,9 @@ import java.math.RoundingMode
  * Наследует общую логику от BaseApiClient и реализует специфику Yandex API.
  */
 class YandexApiClient(
-    httpClient: HttpClient
-) : BaseApiClient(httpClient) {
+    httpClient: HttpClient,
+    apiClientConfig: ApiClientConfig
+) : BaseApiClient(httpClient, apiClientConfig) {
 
     private companion object {
         const val URL = "https://llm.api.cloud.yandex.net/foundationModels/v1/completion"

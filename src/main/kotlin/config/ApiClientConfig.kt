@@ -7,10 +7,9 @@ import kotlinx.serialization.Serializable
  */
 @Serializable
 data class ApiClientConfig(
-    val systemPrompt: String = "Ты - генеративная языковая модель",
-    val temperature: Double = 0.7,
-    val maxTokens: Int = 100,
-    val summaryEdge: Int? = null  // Опциональный параметр для управления суммаризацией
+    val systemPrompt: String,
+    val temperature: Double,
+    val maxTokens: Int,
 ) {
     init {
         require(temperature in 0.0..1.0) {
@@ -18,11 +17,6 @@ data class ApiClientConfig(
         }
         require(maxTokens in 1..10000) {
             "MaxTokens must be in range [1, 10000], but was $maxTokens"
-        }
-        summaryEdge?.let { edge ->
-            require(edge > 0) {
-                "SummaryEdge must be positive, but was $edge"
-            }
         }
     }
 }

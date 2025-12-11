@@ -41,3 +41,8 @@ data class Usage(
     val precached_prompt_tokens: Int
 )
 
+@Serializable
+data class OAuthTokenResponse(
+    val access_token: String,
+    val expires_at: Long
+)

@@ -3,25 +3,21 @@ package yandex
 import ApiClientInterface
 import dto.ApiResponse
 import dto.ApiResult
+import io.ktor.client.*
+import io.ktor.client.call.*
+import io.ktor.client.engine.cio.*
+import io.ktor.client.plugins.contentnegotiation.*
+import io.ktor.client.request.*
+import io.ktor.client.statement.*
+import io.ktor.http.*
+import io.ktor.serialization.kotlinx.json.*
+import kotlinx.coroutines.runBlocking
+import kotlinx.serialization.encodeToString
+import kotlinx.serialization.json.Json
 import yandex.dto.CompletionOptionsDto
 import yandex.dto.MessageDto
 import yandex.dto.RequestDto
 import yandex.dto.ResponseDto
-import io.ktor.client.HttpClient
-import io.ktor.client.call.body
-import io.ktor.client.engine.cio.CIO
-import io.ktor.client.engine.cio.endpoint
-import io.ktor.client.plugins.contentnegotiation.ContentNegotiation
-import io.ktor.client.request.header
-import io.ktor.client.request.post
-import io.ktor.client.request.setBody
-import io.ktor.client.statement.HttpResponse
-import io.ktor.http.ContentType
-import io.ktor.http.contentType
-import io.ktor.serialization.kotlinx.json.json
-import kotlinx.coroutines.runBlocking
-import kotlinx.serialization.encodeToString
-import kotlinx.serialization.json.Json
 import java.math.BigDecimal
 import java.math.RoundingMode
 
@@ -31,7 +27,7 @@ class YandexApiClient : ApiClientInterface {
         val apiKey: String = System.getProperty("yandexApiKey")
     }
 
-    private val client = HttpClient(CIO) {
+    private val httpClient = HttpClient(CIO) {
         install(ContentNegotiation) {
             json()
         }
@@ -96,7 +92,7 @@ class YandexApiClient : ApiClientInterface {
 
             println("Sending POST request to: $URL\n$request")
             val startTime = System.currentTimeMillis()
-            val response: HttpResponse = client.post(URL) {
+            val response: HttpResponse = httpClient.post(URL) {
                 header("accept", "application/json")
                 header("content-type", "application/json")
                 header("Authorization", "Api-Key $apiKey")

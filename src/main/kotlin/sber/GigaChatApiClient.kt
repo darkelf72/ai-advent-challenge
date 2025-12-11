@@ -5,13 +5,12 @@ import dto.ApiResponse
 import dto.ApiResult
 import io.ktor.client.*
 import io.ktor.client.call.*
-import io.ktor.client.engine.cio.CIO
-import io.ktor.client.engine.cio.endpoint
-import io.ktor.client.plugins.contentnegotiation.ContentNegotiation
+import io.ktor.client.engine.cio.*
+import io.ktor.client.plugins.contentnegotiation.*
 import io.ktor.client.request.*
 import io.ktor.client.statement.*
 import io.ktor.http.*
-import io.ktor.serialization.kotlinx.json.json
+import io.ktor.serialization.kotlinx.json.*
 import kotlinx.coroutines.runBlocking
 import kotlinx.serialization.Serializable
 import kotlinx.serialization.encodeToString
@@ -90,7 +89,7 @@ class GigaChatApiClient : ApiClientInterface {
                 requestTimeout = 120000
             }
             https {
-                this.trustManager = trustManagerFactory.trustManagers[0] as X509TrustManager
+                trustManager = trustManagerFactory.trustManagers[0] as X509TrustManager
             }
         }
     }

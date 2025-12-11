@@ -81,7 +81,7 @@ val appModule = module {
         GigaChatApiClient(httpClient = get(named("sslHttpClient")), chatApiClientConfig)
     }
 
-    single<GigaChatApiClient>(named("summarizeApiClient")) {
+    single<ApiClientInterface>(named("summarizeApiClient")) {
         GigaChatApiClient(httpClient = get(named("sslHttpClient")), summarizeApiClientConfig)
     }
 

@@ -5,7 +5,7 @@ import kotlinx.serialization.Serializable
 @Serializable
 data class ApiResponse(
     val message: String,
-    val result: String
+    val result: ApiResult? = null
 )
 
 @Serializable

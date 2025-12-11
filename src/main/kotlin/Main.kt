@@ -1,5 +1,5 @@
 import di.appModule
-import dto.ApiResult
+import dto.ChatMessage
 import io.ktor.http.*
 import io.ktor.serialization.kotlinx.json.*
 import io.ktor.server.application.*
@@ -13,6 +13,7 @@ import io.ktor.server.response.*
 import io.ktor.server.routing.*
 import kotlinx.html.*
 import kotlinx.serialization.Serializable
+import kotlinx.serialization.encodeToString
 import kotlinx.serialization.json.Json
 import org.koin.core.context.startKoin
 import org.koin.core.qualifier.named
@@ -107,10 +108,24 @@ fun Application.configureServer() {
     }
 }
 
+private val json = Json { prettyPrint = true }
+
 suspend fun handleSendMessage(call: ApplicationCall) {
     val request = call.receive<ChatRequest>()
     val apiResponse = apiClient.sendRequest(request.message)
-    call.respond(ChatResponse(question = request.message, answer = apiResponse.message, result = apiResponse.result))
+    val foo = """
+        🕒 ${apiResponse.result!!.elapsedTime} мс
+        ⬆️ ${apiResponse.result.promptTokens} токенов
+        ⬇️ ${apiResponse.result.completionTokens} токенов
+        ↕️ ${apiResponse.result.totalTokens} токенов
+        💸 ${apiResponse.result.cost} руб
+    """.trimIndent()
+    val chatResponse = ChatResponse(
+        question = request.message,
+        answer = apiResponse.message,
+        result = foo//json.encodeToString(apiResponse.result)
+    )
+    call.respond(chatResponse)
 }
 
 suspend fun handleGetSystemPrompt(call: ApplicationCall) {
@@ -191,31 +206,16 @@ suspend fun handleSummarize(call: ApplicationCall) {
             return
         }
 
-        val oldMessagesCount = messageHistory.size
-        val currentSystemPrompt = apiClient.config.systemPrompt
-
-        // Формируем структурированный текст для суммаризации
-        val summarizationText = buildString {
-            appendLine("Системный промпт: $currentSystemPrompt")
-            appendLine()
-            appendLine("История диалога:")
-            messageHistory.forEach { message ->
-                val role = when (message.role) {
-                    "user" -> "User"
-                    "assistant" -> "Assistant"
-                    else -> message.role
-                }
-                appendLine("$role: ${message.content}")
-            }
-        }
+        val summarizationText = listOf(ChatMessage("system", apiClient.config.systemPrompt))
+            .plus(messageHistory)
+            .let { json.encodeToString(mapOf("messages" to it))}
 
         // Выполняем запрос к summarizeApiClient
         val summarizeResponse = summarizeApiClient.sendRequest(summarizationText)
 
         // Парсим метрики из результата
-        val apiResult = Json.decodeFromString<ApiResult>(summarizeResponse.result)
-        val oldTokensCount = apiResult.promptTokens
-        val newTokensCount = apiResult.completionTokens
+        val oldTokensCount = summarizeResponse.result!!.promptTokens //todo refactor nullable
+        val newTokensCount = summarizeResponse.result.completionTokens
 
         // Вычисляем процент сжатия
         val compressionPercent = if (oldTokensCount > 0) {
@@ -227,19 +227,18 @@ suspend fun handleSummarize(call: ApplicationCall) {
         // Обновляем системный промпт текущего apiClient
         apiClient.config = apiClient.config.copy(systemPrompt = summarizeResponse.message)
 
-        // Очищаем историю сообщений
-        apiClient.clearMessages()
-
         // Возвращаем результат
         call.respond(
             SummarizeResponse(
                 newSystemPrompt = summarizeResponse.message,
-                oldMessagesCount = oldMessagesCount,
+                oldMessagesCount = messageHistory.size,
                 oldTokensCount = oldTokensCount,
                 newTokensCount = newTokensCount,
                 compressionPercent = compressionPercent
             )
         )
+        // Очищаем историю сообщений
+        apiClient.clearMessages()
     } catch (e: Exception) {
         call.respond(HttpStatusCode.InternalServerError, mapOf("error" to "Ошибка при суммаризации: ${e.message}"))
     }
@@ -1135,7 +1134,7 @@ fun HTML.chatPage() {
 
                             if (response.ok) {
                                 const data = await response.json();
-                                addMessage(data.answer + '\n' + data.result, false);
+                                addMessage(data.answer + '\n\n' + data.result, false);
                             } else {
                                 addMessage('Ошибка при получении ответа', false);
                             }

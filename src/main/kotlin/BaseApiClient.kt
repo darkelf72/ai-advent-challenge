@@ -4,8 +4,6 @@ import dto.ApiResult
 import dto.ChatMessage
 import io.ktor.client.*
 import kotlinx.coroutines.runBlocking
-import kotlinx.serialization.encodeToString
-import kotlinx.serialization.json.Json
 
 /**
  * Контекст запроса, передаваемый в executeApiRequest
@@ -101,7 +99,7 @@ abstract class BaseApiClient(
                 cost = calculateCost(apiResponse.totalTokens)
             )
 
-            ApiResponse(message = apiResponse.answer, result = Json.encodeToString(apiResult))
+            ApiResponse(message = apiResponse.answer, result = apiResult)
         } catch (e: Exception) {
             handleError(e)
         }
@@ -136,6 +134,6 @@ abstract class BaseApiClient(
      * @return ответ с информацией об ошибке
      */
     protected open fun handleError(e: Exception): ApiResponse {
-        return ApiResponse("Request failed", e.localizedMessage)
+        return ApiResponse("Request failed: ${e.localizedMessage}")
     }
 }

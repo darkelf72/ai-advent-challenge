@@ -1,4 +1,5 @@
 import di.appModule
+import dto.ApiResult
 import io.ktor.http.*
 import io.ktor.serialization.kotlinx.json.*
 import io.ktor.server.application.*
@@ -12,6 +13,7 @@ import io.ktor.server.response.*
 import io.ktor.server.routing.*
 import kotlinx.html.*
 import kotlinx.serialization.Serializable
+import kotlinx.serialization.json.Json
 import org.koin.core.context.startKoin
 import org.koin.core.qualifier.named
 import org.koin.java.KoinJavaComponent.get
@@ -49,10 +51,20 @@ data class ClientSwitchRequest(val clientName: String)
 @Serializable
 data class ClientSwitchResponse(val clientName: String, val systemPrompt: String, val temperature: Double)
 
+@Serializable
+data class SummarizeResponse(
+    val newSystemPrompt: String,
+    val oldMessagesCount: Int,
+    val oldTokensCount: Int,
+    val newTokensCount: Int,
+    val compressionPercent: Int
+)
+
 // Текущий активный клиент
 private var currentClientName: String = "YandexGPT Pro 5.1"
 private lateinit var apiClient: ApiClientInterface
 private lateinit var availableClients: Map<String, ApiClientInterface>
+private lateinit var summarizeApiClient: ApiClientInterface
 
 fun main() {
     // Инициализация Koin
@@ -63,6 +75,7 @@ fun main() {
     // Получение зависимостей через Koin
     availableClients = get(Map::class.java, named("availableClients")) as Map<String, ApiClientInterface>
     apiClient = availableClients.getValue(currentClientName)
+    summarizeApiClient = get(ApiClientInterface::class.java, named("summarizeApiClient"))
 
     embeddedServer(Netty, port = 9999, host = "0.0.0.0") {
         configureServer()
@@ -90,6 +103,7 @@ fun Application.configureServer() {
         get("/api/current-client") { handleGetCurrentClient(call) }
         post("/api/switch-client") { handleSwitchClient(call) }
         get("/api/available-clients") { handleGetAvailableClients(call) }
+        post("/api/summarize") { handleSummarize(call) }
     }
 }
 
@@ -165,6 +179,69 @@ suspend fun handleSwitchClient(call: ApplicationCall) {
         )
     } else {
         call.respond(HttpStatusCode.BadRequest, mapOf("error" to "Unknown client: ${request.clientName}"))
+    }
+}
+
+suspend fun handleSummarize(call: ApplicationCall) {
+    try {
+        // Проверяем, что история не пустая
+        val messageHistory = apiClient.messageHistory
+        if (messageHistory.isEmpty()) {
+            call.respond(HttpStatusCode.BadRequest, mapOf("error" to "История сообщений пуста. Нечего суммаризовать."))
+            return
+        }
+
+        val oldMessagesCount = messageHistory.size
+        val currentSystemPrompt = apiClient.config.systemPrompt
+
+        // Формируем структурированный текст для суммаризации
+        val summarizationText = buildString {
+            appendLine("Системный промпт: $currentSystemPrompt")
+            appendLine()
+            appendLine("История диалога:")
+            messageHistory.forEach { message ->
+                val role = when (message.role) {
+                    "user" -> "User"
+                    "assistant" -> "Assistant"
+                    else -> message.role
+                }
+                appendLine("$role: ${message.content}")
+            }
+        }
+
+        // Выполняем запрос к summarizeApiClient
+        val summarizeResponse = summarizeApiClient.sendRequest(summarizationText)
+
+        // Парсим метрики из результата
+        val apiResult = Json.decodeFromString<ApiResult>(summarizeResponse.result)
+        val oldTokensCount = apiResult.promptTokens
+        val newTokensCount = apiResult.completionTokens
+
+        // Вычисляем процент сжатия
+        val compressionPercent = if (oldTokensCount > 0) {
+            ((oldTokensCount - newTokensCount).toDouble() / oldTokensCount * 100).toInt()
+        } else {
+            0
+        }
+
+        // Обновляем системный промпт текущего apiClient
+        apiClient.config = apiClient.config.copy(systemPrompt = summarizeResponse.message)
+
+        // Очищаем историю сообщений
+        apiClient.clearMessages()
+
+        // Возвращаем результат
+        call.respond(
+            SummarizeResponse(
+                newSystemPrompt = summarizeResponse.message,
+                oldMessagesCount = oldMessagesCount,
+                oldTokensCount = oldTokensCount,
+                newTokensCount = newTokensCount,
+                compressionPercent = compressionPercent
+            )
+        )
+    } catch (e: Exception) {
+        call.respond(HttpStatusCode.InternalServerError, mapOf("error" to "Ошибка при суммаризации: ${e.message}"))
     }
 }
 
@@ -616,6 +693,11 @@ fun HTML.chatPage() {
                         }
                     }
                     button {
+                        id = "summarizeButton"
+                        classes = setOf("control-btn", "btn-primary")
+                        +"Summarize"
+                    }
+                    button {
                         id = "clearHistoryButton"
                         classes = setOf("control-btn", "btn-danger")
                         +"Clear history"
@@ -691,6 +773,7 @@ fun HTML.chatPage() {
                     const systemPromptInput = document.getElementById('systemPromptInput');
                     const setPromptButton = document.getElementById('setPromptButton');
                     const clearHistoryButton = document.getElementById('clearHistoryButton');
+                    const summarizeButton = document.getElementById('summarizeButton');
                     const temperatureSlider = document.getElementById('temperatureSlider');
                     const temperatureValue = document.getElementById('temperatureValue');
                     const maxTokensInput = document.getElementById('maxTokensInput');
@@ -900,6 +983,35 @@ fun HTML.chatPage() {
                         }
                     };
 
+                    const addSystemMessage = (text) => {
+                        const messageDiv = document.createElement('div');
+                        messageDiv.className = 'message ai-message';
+
+                        const label = document.createElement('div');
+                        label.className = 'message-label ai-label';
+
+                        const labelText = document.createElement('span');
+                        labelText.textContent = 'System';
+
+                        const timeStamp = document.createElement('span');
+                        timeStamp.className = 'message-time';
+                        timeStamp.textContent = formatTimestamp();
+
+                        label.appendChild(labelText);
+                        label.appendChild(timeStamp);
+
+                        const content = document.createElement('div');
+                        content.className = 'message-content';
+                        content.innerHTML = marked.parse(text);
+                        content.style.fontStyle = 'italic';
+                        content.style.color = '#999';
+
+                        messageDiv.appendChild(label);
+                        messageDiv.appendChild(content);
+                        chatBox.appendChild(messageDiv);
+                        chatBox.scrollTop = chatBox.scrollHeight;
+                    };
+
                     const clearHistory = async () => {
                         try {
                             clearHistoryButton.disabled = true;
@@ -909,32 +1021,7 @@ fun HTML.chatPage() {
                             });
 
                             if (response.ok) {
-                                const messageDiv = document.createElement('div');
-                                messageDiv.className = 'message ai-message';
-
-                                const label = document.createElement('div');
-                                label.className = 'message-label ai-label';
-
-                                const labelText = document.createElement('span');
-                                labelText.textContent = 'System';
-
-                                const timeStamp = document.createElement('span');
-                                timeStamp.className = 'message-time';
-                                timeStamp.textContent = formatTimestamp();
-
-                                label.appendChild(labelText);
-                                label.appendChild(timeStamp);
-
-                                const content = document.createElement('div');
-                                content.className = 'message-content';
-                                content.textContent = 'История сообщений была очищена';
-                                content.style.fontStyle = 'italic';
-                                content.style.color = '#999';
-
-                                messageDiv.appendChild(label);
-                                messageDiv.appendChild(content);
-                                chatBox.appendChild(messageDiv);
-                                chatBox.scrollTop = chatBox.scrollHeight;
+                                addSystemMessage('История сообщений была очищена');
                             } else {
                                 alert('Ошибка при очистке истории');
                             }
@@ -942,6 +1029,43 @@ fun HTML.chatPage() {
                             alert('Ошибка сети: ' + error.message);
                         } finally {
                             clearHistoryButton.disabled = false;
+                        }
+                    };
+
+                    const summarizeHistory = async () => {
+                        try {
+                            summarizeButton.disabled = true;
+                            summarizeButton.textContent = 'Суммаризация...';
+
+                            const response = await fetch('/api/summarize', {
+                                method: 'POST',
+                                headers: { 'Content-Type': 'application/json' }
+                            });
+
+                            if (response.ok) {
+                                const data = await response.json();
+
+                                // Обновляем системный промпт в UI
+                                systemPromptInput.value = data.newSystemPrompt;
+
+                                // Формируем сообщение со статистикой
+                                const compressionSign = data.compressionPercent > 0 ? '↓' : '↑';
+                                const message = `**История диалога суммаризована**\n\n` +
+                                    `📝 Сообщений обработано: **${data.oldMessagesCount}**\n` +
+                                    `📊 Токенов до суммаризации: **${data.oldTokensCount}**\n` +
+                                    `✨ Токенов после суммаризации: **${data.newTokensCount}**\n` +
+                                    `${compressionSign} Сжатие контекста: **${Math.abs(data.compressionPercent)}%**`;
+
+                                addSystemMessage(message);
+                            } else {
+                                const errorData = await response.json();
+                                alert(errorData.error || 'Ошибка при суммаризации');
+                            }
+                        } catch (error) {
+                            alert('Ошибка сети: ' + error.message);
+                        } finally {
+                            summarizeButton.disabled = false;
+                            summarizeButton.textContent = 'Summarize';
                         }
                     };
 
@@ -1088,6 +1212,7 @@ fun HTML.chatPage() {
                     sendButton.addEventListener('click', sendMessage);
                     setPromptButton.addEventListener('click', setSystemPrompt);
                     clearHistoryButton.addEventListener('click', clearHistory);
+                    summarizeButton.addEventListener('click', summarizeHistory);
 
                     messageInput.addEventListener('keydown', (e) => {
                         if (e.key === 'Enter' && !e.shiftKey && !sendButton.disabled) {

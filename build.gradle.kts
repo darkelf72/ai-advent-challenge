@@ -24,6 +24,10 @@ dependencies {
     implementation("io.ktor:ktor-server-content-negotiation:3.0.2")
     implementation("io.ktor:ktor-server-html-builder:3.0.2")
     implementation("io.ktor:ktor-server-cors:3.0.2")
+
+    // Koin for Dependency Injection
+    implementation("io.insert-koin:koin-core:4.0.0")
+    implementation("io.insert-koin:koin-ktor:4.0.0")
 }
 
 dependencies {

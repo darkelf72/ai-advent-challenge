@@ -1,3 +1,4 @@
+import di.appModule
 import io.ktor.http.*
 import io.ktor.serialization.kotlinx.json.*
 import io.ktor.server.application.*
@@ -11,7 +12,9 @@ import io.ktor.server.response.*
 import io.ktor.server.routing.*
 import kotlinx.html.*
 import kotlinx.serialization.Serializable
-import yandex.YandexApiClient
+import org.koin.core.context.startKoin
+import org.koin.core.qualifier.named
+import org.koin.java.KoinJavaComponent.get
 
 @Serializable
 data class ChatRequest(val message: String)
@@ -38,22 +41,29 @@ data class MaxTokensRequest(val maxTokens: Int)
 data class MaxTokensResponse(val maxTokens: Int)
 
 @Serializable
+data class MessageHistoryResponse(val messages: List<Map<String, String>>)
+
+@Serializable
 data class ClientSwitchRequest(val clientName: String)
 
 @Serializable
 data class ClientSwitchResponse(val clientName: String, val systemPrompt: String, val temperature: Double)
 
-// Карта всех доступных клиентов
-private val availableClients = mapOf(
-    "YandexGPT Pro 5.1" to YandexApiClient(),
-    "GigaChat 2 Lite" to sber.GigaChatApiClient()
-)
-
 // Текущий активный клиент
 private var currentClientName: String = "YandexGPT Pro 5.1"
-private var apiClient: ApiClientInterface = availableClients.getValue(currentClientName)
+private lateinit var apiClient: ApiClientInterface
+private lateinit var availableClients: Map<String, ApiClientInterface>
 
 fun main() {
+    // Инициализация Koin
+    startKoin {
+        modules(appModule)
+    }
+
+    // Получение зависимостей через Koin
+    availableClients = get(Map::class.java, named("availableClients")) as Map<String, ApiClientInterface>
+    apiClient = availableClients.getValue(currentClientName)
+
     embeddedServer(Netty, port = 9999, host = "0.0.0.0") {
         configureServer()
     }.start(wait = true)
@@ -75,6 +85,7 @@ fun Application.configureServer() {
         post("/api/temperature") { handleSetTemperature(call) }
         get("/api/max-tokens") { handleGetMaxTokens(call) }
         post("/api/max-tokens") { handleSetMaxTokens(call) }
+        get("/api/message-history") { handleGetMessageHistory(call) }
         post("/api/clear-history") { handleClearHistory(call) }
         get("/api/current-client") { handleGetCurrentClient(call) }
         post("/api/switch-client") { handleSwitchClient(call) }
@@ -89,13 +100,20 @@ suspend fun handleSendMessage(call: ApplicationCall) {
 }
 
 suspend fun handleGetSystemPrompt(call: ApplicationCall) {
-    call.respond(SystemPromptResponse(prompt = apiClient.getSystemPrompt()))
+    call.respond(SystemPromptResponse(prompt = apiClient.config.systemPrompt))
 }
 
 suspend fun handleSetSystemPrompt(call: ApplicationCall) {
     val request = call.receive<SystemPromptRequest>()
-    apiClient.setSystemPrompt(request.prompt)
+    apiClient.config = apiClient.config.copy(systemPrompt = request.prompt)
     call.respond(SystemPromptResponse(prompt = request.prompt))
+}
+
+suspend fun handleGetMessageHistory(call: ApplicationCall) {
+    val history = apiClient.messageHistory.map { message ->
+        mapOf("role" to message.role, "content" to message.content)
+    }
+    call.respond(MessageHistoryResponse(messages = history))
 }
 
 suspend fun handleClearHistory(call: ApplicationCall) {
@@ -104,22 +122,22 @@ suspend fun handleClearHistory(call: ApplicationCall) {
 }
 
 suspend fun handleGetTemperature(call: ApplicationCall) {
-    call.respond(TemperatureResponse(temperature = apiClient.getTemperature()))
+    call.respond(TemperatureResponse(temperature = apiClient.config.temperature))
 }
 
 suspend fun handleSetTemperature(call: ApplicationCall) {
     val request = call.receive<TemperatureRequest>()
-    apiClient.setTemperature(request.temperature)
+    apiClient.config = apiClient.config.copy(temperature = request.temperature)
     call.respond(TemperatureResponse(temperature = request.temperature))
 }
 
 suspend fun handleGetMaxTokens(call: ApplicationCall) {
-    call.respond(MaxTokensResponse(maxTokens = apiClient.getMaxTokens()))
+    call.respond(MaxTokensResponse(maxTokens = apiClient.config.maxTokens))
 }
 
 suspend fun handleSetMaxTokens(call: ApplicationCall) {
     val request = call.receive<MaxTokensRequest>()
-    apiClient.setMaxTokens(request.maxTokens)
+    apiClient.config = apiClient.config.copy(maxTokens = request.maxTokens)
     call.respond(MaxTokensResponse(maxTokens = request.maxTokens))
 }
 
@@ -141,8 +159,8 @@ suspend fun handleSwitchClient(call: ApplicationCall) {
         call.respond(
             ClientSwitchResponse(
                 clientName = currentClientName,
-                systemPrompt = apiClient.getSystemPrompt(),
-                temperature = apiClient.getTemperature()
+                systemPrompt = apiClient.config.systemPrompt,
+                temperature = apiClient.config.temperature
             )
         )
     } else {

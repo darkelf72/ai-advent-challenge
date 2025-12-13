@@ -127,22 +127,6 @@ suspend fun handleSendMessage(call: ApplicationCall) {
     val request = call.receive<ChatRequest>()
     val apiResponse = apiClient.sendRequest(request.message)
 
-    // Проверяем необходимость автоматической суммаризации
-    val threshold = apiClient.config.autoSummarizeThreshold
-    if (threshold > 0) {
-        // Считаем только user-сообщения
-        val userMessagesCount = apiClient.messageHistory.count { it.role == "user" }
-        if (userMessagesCount >= threshold) {
-            try {
-                // Выполняем автоматическую суммаризацию
-                summarizationService.summarize(apiClient)
-            } catch (e: Exception) {
-                // Логируем ошибку, но не прерываем основной поток
-                println("Auto-summarization failed: ${e.message}")
-            }
-        }
-    }
-
     val foo = """
         🕒 ${apiResponse.result!!.elapsedTime} мс
         ⬆️ ${apiResponse.result.promptTokens} токенов
@@ -232,10 +216,9 @@ suspend fun handleSummarize(call: ApplicationCall) {
         // Используем SummarizationService для выполнения суммаризации
         val result = summarizationService.summarize(apiClient)
         call.respond(result)
-    } catch (e: IllegalStateException) {
-        call.respond(HttpStatusCode.BadRequest, mapOf("error" to e.message))
     } catch (e: Exception) {
-        call.respond(HttpStatusCode.InternalServerError, mapOf("error" to "Ошибка при суммаризации: ${e.message}"))
+        // Логируем ошибку, но не прерываем основной поток
+        println("Auto-summarization failed: ${e.message}")
     }
 }
 
@@ -731,11 +714,6 @@ fun HTML.chatPage() {
                             }
                         }
                     }
-                    button {
-                        id = "summarizeButton"
-                        classes = setOf("control-btn", "btn-primary")
-                        +"Summarize"
-                    }
                     div(classes = "auto-summarize-container") {
                         div(classes = "auto-summarize-label") { +"Auto (msgs):" }
                         input {
@@ -824,7 +802,6 @@ fun HTML.chatPage() {
                     const systemPromptInput = document.getElementById('systemPromptInput');
                     const setPromptButton = document.getElementById('setPromptButton');
                     const clearHistoryButton = document.getElementById('clearHistoryButton');
-                    const summarizeButton = document.getElementById('summarizeButton');
                     const temperatureSlider = document.getElementById('temperatureSlider');
                     const temperatureValue = document.getElementById('temperatureValue');
                     const maxTokensInput = document.getElementById('maxTokensInput');
@@ -1162,40 +1139,45 @@ fun HTML.chatPage() {
                         }
                     };
 
-                    const summarizeHistory = async () => {
+                    const displaySummarizeResult = (data) => {
+                        // Обновляем системный промпт в UI
+                        systemPromptInput.value = data.newSystemPrompt;
+
+                        // Формируем сообщение со статистикой
+                        const compressionSign = data.compressionPercent > 0 ? '↓' : '↑';
+                        const message = `**История диалога суммаризована**\n\n` +
+                            `📝 Сообщений обработано: **${data.oldMessagesCount}**\n` +
+                            `📊 Токенов до суммаризации: **${data.oldTokensCount}**\n` +
+                            `✨ Токенов после суммаризации: **${data.newTokensCount}**\n` +
+                            `${compressionSign} Сжатие контекста: **${Math.abs(data.compressionPercent)}%**`;
+
+                        addSystemMessage(message);
+                    };
+
+                    const checkAndSummarize = async () => {
+                        const threshold = parseInt(autoSummarizeThresholdInput.value);
+                        if (threshold === 0) return;
+
                         try {
-                            summarizeButton.disabled = true;
-                            summarizeButton.textContent = 'Суммаризация...';
+                            const historyResponse = await fetch('/api/message-history');
+                            if (historyResponse.ok) {
+                                const historyData = await historyResponse.json();
+                                const userMessagesCount = historyData.messages.filter(msg => msg.role === 'user').length;
 
-                            const response = await fetch('/api/summarize', {
-                                method: 'POST',
-                                headers: { 'Content-Type': 'application/json' }
-                            });
+                                if (userMessagesCount >= threshold) {
+                                    const summarizeResponse = await fetch('/api/summarize', {
+                                        method: 'POST',
+                                        headers: { 'Content-Type': 'application/json' }
+                                    });
 
-                            if (response.ok) {
-                                const data = await response.json();
-
-                                // Обновляем системный промпт в UI
-                                systemPromptInput.value = data.newSystemPrompt;
-
-                                // Формируем сообщение со статистикой
-                                const compressionSign = data.compressionPercent > 0 ? '↓' : '↑';
-                                const message = `**История диалога суммаризована**\n\n` +
-                                    `📝 Сообщений обработано: **${data.oldMessagesCount}**\n` +
-                                    `📊 Токенов до суммаризации: **${data.oldTokensCount}**\n` +
-                                    `✨ Токенов после суммаризации: **${data.newTokensCount}**\n` +
-                                    `${compressionSign} Сжатие контекста: **${Math.abs(data.compressionPercent)}%**`;
-
-                                addSystemMessage(message);
-                            } else {
-                                const errorData = await response.json();
-                                alert(errorData.error || 'Ошибка при суммаризации');
+                                    if (summarizeResponse.ok) {
+                                        const data = await summarizeResponse.json();
+                                        displaySummarizeResult(data);
+                                    }
+                                }
                             }
                         } catch (error) {
-                            alert('Ошибка сети: ' + error.message);
-                        } finally {
-                            summarizeButton.disabled = false;
-                            summarizeButton.textContent = 'Summarize';
+                            console.error('Auto-summarization failed:', error);
                         }
                     };
 
@@ -1266,6 +1248,9 @@ fun HTML.chatPage() {
                             if (response.ok) {
                                 const data = await response.json();
                                 addMessage(data.answer + '\n\n' + data.result, false);
+
+                                // Проверяем необходимость автоматической суммаризации
+                                await checkAndSummarize();
                             } else {
                                 addMessage('Ошибка при получении ответа', false);
                             }
@@ -1343,7 +1328,6 @@ fun HTML.chatPage() {
                     sendButton.addEventListener('click', sendMessage);
                     setPromptButton.addEventListener('click', setSystemPrompt);
                     clearHistoryButton.addEventListener('click', clearHistory);
-                    summarizeButton.addEventListener('click', summarizeHistory);
 
                     messageInput.addEventListener('keydown', (e) => {
                         if (e.key === 'Enter' && !e.shiftKey && !sendButton.disabled) {

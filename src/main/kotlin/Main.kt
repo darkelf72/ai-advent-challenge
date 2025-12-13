@@ -1275,6 +1275,9 @@ fun HTML.chatPage() {
                             if (response.ok) {
                                 const data = await response.json();
 
+                                // Очищаем чат перед загрузкой истории нового клиента
+                                chatBox.innerHTML = '';
+
                                 // Обновляем параметры
                                 systemPromptInput.value = data.systemPrompt;
                                 temperatureSlider.value = data.temperature;
@@ -1283,6 +1286,9 @@ fun HTML.chatPage() {
                                 // Загружаем maxTokens и autoSummarizeThreshold для нового клиента
                                 await loadMaxTokens();
                                 await loadAutoSummarizeThreshold();
+
+                                // Загружаем историю сообщений нового клиента
+                                await loadMessageHistory();
 
                                 // Выводим сообщение в чат
                                 const messageDiv = document.createElement('div');
@@ -1336,10 +1342,31 @@ fun HTML.chatPage() {
                         }
                     });
 
+                    const loadMessageHistory = async () => {
+                        try {
+                            const response = await fetch('/api/message-history');
+                            if (response.ok) {
+                                const data = await response.json();
+                                // Отображаем каждое сообщение из истории (уже отсортировано по message_order)
+                                data.messages.forEach(msg => {
+                                    if (msg.role === 'user') {
+                                        addMessage(msg.content, true);
+                                    } else if (msg.role === 'assistant') {
+                                        addMessage(msg.content, false);
+                                    }
+                                    // system сообщения не отображаем в чате
+                                });
+                            }
+                        } catch (error) {
+                            console.error('Failed to load message history:', error);
+                        }
+                    };
+
                     loadSystemPrompt();
                     loadTemperature();
                     loadMaxTokens();
                     loadAutoSummarizeThreshold();
+                    loadMessageHistory();
                     messageInput.focus();
                 """
                 )

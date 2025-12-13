@@ -1,3 +1,4 @@
+import database.DatabaseManager
 import di.appModule
 import dto.ChatMessage
 import io.ktor.http.*
@@ -68,6 +69,9 @@ private lateinit var availableClients: Map<String, ApiClientInterface>
 private lateinit var summarizeApiClient: ApiClientInterface
 
 fun main() {
+    // Инициализация базы данных ДО запуска Koin
+    DatabaseManager.init()
+
     // Инициализация Koin
     startKoin {
         modules(appModule)

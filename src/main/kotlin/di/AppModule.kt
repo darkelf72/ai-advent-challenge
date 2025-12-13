@@ -2,6 +2,8 @@ package di
 
 import ApiClientInterface
 import config.apiClientConfig
+import database.repository.ClientConfigRepository
+import database.repository.MessageHistoryRepository
 import io.ktor.client.*
 import io.ktor.client.engine.cio.*
 import io.ktor.client.plugins.contentnegotiation.*
@@ -15,6 +17,9 @@ import javax.net.ssl.TrustManagerFactory
 import javax.net.ssl.X509TrustManager
 
 val appModule = module {
+    // Repositories
+    single { ClientConfigRepository() }
+    single { MessageHistoryRepository() }
     // Обычный HttpClient для YandexApiClient
     single<HttpClient>(named("standardHttpClient")) {
         HttpClient(CIO) {
@@ -78,15 +83,33 @@ val appModule = module {
     }
     // API Clients
     single<YandexApiClient> {
-        YandexApiClient(httpClient = get(named("standardHttpClient")), chatApiClientConfig)
+        YandexApiClient(
+            httpClient = get(named("standardHttpClient")),
+            apiClientConfig = chatApiClientConfig,
+            clientName = "yandex",
+            configRepository = get(),
+            messageHistoryRepository = get()
+        )
     }
 
     single<GigaChatApiClient> {
-        GigaChatApiClient(httpClient = get(named("sslHttpClient")), chatApiClientConfig)
+        GigaChatApiClient(
+            httpClient = get(named("sslHttpClient")),
+            apiClientConfig = chatApiClientConfig,
+            clientName = "gigachat",
+            configRepository = get(),
+            messageHistoryRepository = get()
+        )
     }
 
     single<ApiClientInterface>(named("summarizeApiClient")) {
-        GigaChatApiClient(httpClient = get(named("sslHttpClient")), summarizeApiClientConfig)
+        GigaChatApiClient(
+            httpClient = get(named("sslHttpClient")),
+            apiClientConfig = summarizeApiClientConfig,
+            clientName = "gigachat-summarize",
+            configRepository = get(),
+            messageHistoryRepository = get()
+        )
     }
 
     // Мапа всех доступных клиентов

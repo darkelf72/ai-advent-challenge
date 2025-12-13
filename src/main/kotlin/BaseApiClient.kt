@@ -1,4 +1,6 @@
 import config.ApiClientConfig
+import database.repository.ClientConfigRepository
+import database.repository.MessageHistoryRepository
 import dto.ApiResponse
 import dto.ApiResult
 import dto.ChatMessage
@@ -41,19 +43,62 @@ data class StandardApiResponse(
  */
 abstract class BaseApiClient(
     protected val httpClient: HttpClient,
-    protected val apiClientConfig: ApiClientConfig
+    protected val apiClientConfig: ApiClientConfig,
+    protected val clientName: String,
+    private val configRepository: ClientConfigRepository,
+    private val messageHistoryRepository: MessageHistoryRepository
 ) : ApiClientInterface {
 
     // Конфигурация клиента (общая для всех реализаций)
-    override var config: ApiClientConfig = apiClientConfig
+    private var _config: ApiClientConfig = apiClientConfig
+    override var config: ApiClientConfig
+        get() = _config
+        set(value) {
+            _config = value
+            // Автоматически сохраняем изменения конфигурации в БД
+            configRepository.saveConfig(clientName, value)
+        }
 
     // История сообщений (общая для всех реализаций)
     private val _messageHistory = mutableListOf<ChatMessage>()
     override val messageHistory: List<ChatMessage>
         get() = _messageHistory.toList()
 
+    init {
+        // Загружаем данные из БД при инициализации
+        loadFromDatabase()
+    }
+
+    /**
+     * Загружает конфигурацию и историю сообщений из базы данных
+     */
+    private fun loadFromDatabase() {
+        // Загрузка конфигурации
+        val savedConfig = configRepository.loadConfig(clientName)
+        if (savedConfig != null) {
+            _config = savedConfig
+        } else {
+            // Если конфигурации нет в БД, сохраняем текущую
+            configRepository.saveConfig(clientName, _config)
+        }
+
+        // Загрузка истории сообщений
+        val savedMessages = messageHistoryRepository.loadMessages(clientName)
+        _messageHistory.clear()
+        _messageHistory.addAll(savedMessages)
+    }
+
+    /**
+     * Сохраняет текущую историю сообщений в БД
+     */
+    private fun saveMessageHistory() {
+        messageHistoryRepository.saveMessages(clientName, _messageHistory)
+    }
+
     override fun clearMessages() {
         _messageHistory.clear()
+        // Автоматически сохраняем изменения в БД
+        messageHistoryRepository.clearMessages(clientName)
     }
 
     /**
@@ -89,6 +134,9 @@ abstract class BaseApiClient(
             // Шаг 4: Добавляем ответ ассистента в историю
             val assistantMessage = ChatMessage(role = "assistant", content = apiResponse.answer)
             _messageHistory.add(assistantMessage)
+
+            // Сохраняем обновленную историю в БД
+            saveMessageHistory()
 
             // Шаг 5: Формируем результат с метриками
             val apiResult = ApiResult(

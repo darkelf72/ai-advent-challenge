@@ -4,6 +4,8 @@ import BaseApiClient
 import RequestContext
 import StandardApiResponse
 import config.ApiClientConfig
+import database.repository.ClientConfigRepository
+import database.repository.MessageHistoryRepository
 import io.ktor.client.*
 import io.ktor.client.call.*
 import io.ktor.client.request.*
@@ -25,8 +27,11 @@ import java.util.*
  */
 class GigaChatApiClient(
     httpClient: HttpClient,
-    apiClientConfig: ApiClientConfig
-) : BaseApiClient(httpClient, apiClientConfig) {
+    apiClientConfig: ApiClientConfig,
+    clientName: String,
+    configRepository: ClientConfigRepository,
+    messageHistoryRepository: MessageHistoryRepository
+) : BaseApiClient(httpClient, apiClientConfig, clientName, configRepository, messageHistoryRepository) {
 
     private val logger = LoggerFactory.getLogger(GigaChatApiClient::class.java)
 

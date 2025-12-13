@@ -28,6 +28,20 @@ dependencies {
     // Koin for Dependency Injection
     implementation("io.insert-koin:koin-core:4.0.0")
     implementation("io.insert-koin:koin-ktor:4.0.0")
+
+    // Exposed ORM
+    implementation("org.jetbrains.exposed:exposed-core:0.57.0")
+    implementation("org.jetbrains.exposed:exposed-dao:0.57.0")
+    implementation("org.jetbrains.exposed:exposed-jdbc:0.57.0")
+
+    // SQLite JDBC Driver
+    implementation("org.xerial:sqlite-jdbc:3.47.1.0")
+
+    // Flyway for Database Migrations
+    implementation("org.flywaydb:flyway-core:11.1.0")
+
+    // SLF4J for Logging
+    implementation("org.slf4j:slf4j-simple:2.0.16")
 }
 
 dependencies {

@@ -4,6 +4,8 @@ import BaseApiClient
 import RequestContext
 import StandardApiResponse
 import config.ApiClientConfig
+import database.repository.ClientConfigRepository
+import database.repository.MessageHistoryRepository
 import io.ktor.client.*
 import io.ktor.client.call.*
 import io.ktor.client.request.*
@@ -22,8 +24,11 @@ import java.math.RoundingMode
  */
 class YandexApiClient(
     httpClient: HttpClient,
-    apiClientConfig: ApiClientConfig
-) : BaseApiClient(httpClient, apiClientConfig) {
+    apiClientConfig: ApiClientConfig,
+    clientName: String,
+    configRepository: ClientConfigRepository,
+    messageHistoryRepository: MessageHistoryRepository
+) : BaseApiClient(httpClient, apiClientConfig, clientName, configRepository, messageHistoryRepository) {
 
     private companion object {
         const val URL = "https://llm.api.cloud.yandex.net/foundationModels/v1/completion"

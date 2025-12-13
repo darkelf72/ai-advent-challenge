@@ -27,6 +27,13 @@ This is a web-based AI chat application that integrates with multiple Russian LL
 - **Koin 4.0.0** - Dependency Injection
 - **Kotlinx Serialization** - JSON serialization
 
+### Database & Persistence
+- **SQLite 3.47.1.0** - Embedded database (file: `chat_data.db`)
+- **Exposed ORM 0.57.0** - Type-safe SQL DSL for Kotlin
+  - Core, DAO, and JDBC modules
+- **Flyway 11.1.0** - Database migration tool
+- **SLF4J 2.0.16** - Logging facade
+
 ### Frontend
 - **Server-side HTML rendering** using Ktor HTML Builder DSL
 - **Vanilla JavaScript** embedded in HTML
@@ -70,7 +77,13 @@ All components are registered in `di/AppModule.kt`:
 - API client instances (chat and summarization)
 - Available clients map
 
-#### 3. Interface-Based Design
+#### 3. Repository Pattern
+Persistence layer uses Repository pattern for database operations:
+- `ClientConfigRepository` - manages API client configurations
+- `MessageHistoryRepository` - manages chat message history
+- Automatic save/load on configuration and history changes
+
+#### 4. Interface-Based Design
 `ApiClientInterface` defines the contract for all API clients, enabling polymorphism and easy testing.
 
 ### Project Structure
@@ -83,9 +96,17 @@ src/main/kotlin/
 ├── config/
 │   ├── ApiClientConfig.kt           # Immutable config data class
 │   └── ApiClientConfigBuilder.kt    # DSL for config creation
+├── database/
+│   ├── DatabaseManager.kt           # DB initialization & Flyway migrations
+│   ├── tables/
+│   │   ├── ClientConfigTable.kt     # Exposed table for client configs
+│   │   └── MessageHistoryTable.kt   # Exposed table for message history
+│   └── repository/
+│       ├── ClientConfigRepository.kt    # Config persistence operations
+│       └── MessageHistoryRepository.kt  # History persistence operations
 ├── dto/
 │   ├── ChatMessage.kt               # Message model (role, content)
-│   ├── ResponseDto.kt               # ApiResponse, ApiResult
+│   └── ResponseDto.kt               # ApiResponse, ApiResult
 ├── di/
 │   └── AppModule.kt                 # Koin DI module
 ├── yandex/
@@ -96,7 +117,10 @@ src/main/kotlin/
     └── dto/GigaChatDto.kt           # GigaChat-specific DTOs
 
 resources/
-└── truststore.jks                   # SSL certificate for GigaChat
+├── truststore.jks                   # SSL certificate for GigaChat
+└── db/
+    └── migration/
+        └── V1__Initial_schema.sql   # Flyway migration script
 ```
 
 ## Key Components
@@ -113,6 +137,8 @@ resources/
 - Manages message history internally (`_messageHistory`)
 - Orchestrates request flow via Template Method
 - Handles errors uniformly
+- Automatically persists configuration and message history to database
+- Loads saved state on initialization
 
 **Concrete Implementations:**
 - `YandexApiClient` - Yandex Foundation Models API
@@ -152,6 +178,8 @@ History is automatically maintained by `BaseApiClient`:
 - User messages added before API call
 - Assistant messages added after response
 - Accessible via `messageHistory` property
+- **Automatically persisted to SQLite database**
+- Restored on application restart
 
 ### 4. Conversation Summarization
 
@@ -172,7 +200,61 @@ History is automatically maintained by `BaseApiClient`:
 
 **Summarize Client:** Special GigaChatApiClient instance with custom prompt optimized for summarization (see `di/AppModule.kt:59-74`)
 
-### 5. HTTP Endpoints
+### 5. Database Persistence
+
+**Database:** SQLite (`chat_data.db` file in project root)
+
+**Schema:**
+```sql
+-- Client configurations
+CREATE TABLE client_config (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    client_name VARCHAR(50) UNIQUE NOT NULL,
+    system_prompt TEXT NOT NULL,
+    temperature REAL NOT NULL,
+    max_tokens INTEGER NOT NULL
+);
+
+-- Message history
+CREATE TABLE message_history (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    client_name VARCHAR(50) NOT NULL,
+    role VARCHAR(20) NOT NULL,
+    content TEXT NOT NULL,
+    message_order INTEGER NOT NULL,
+    created_at INTEGER NOT NULL
+);
+
+-- Indexes for performance
+CREATE INDEX idx_message_history_client_name ON message_history(client_name);
+CREATE INDEX idx_message_history_order ON message_history(client_name, message_order);
+```
+
+**Repositories:**
+
+`ClientConfigRepository`:
+- `saveConfig(clientName, config)` - upsert configuration
+- `loadConfig(clientName)` - retrieve configuration
+- `deleteConfig(clientName)` - remove configuration
+
+`MessageHistoryRepository`:
+- `saveMessages(clientName, messages)` - replace all messages for client
+- `loadMessages(clientName)` - retrieve ordered messages
+- `clearMessages(clientName)` - delete all messages for client
+- `getMessageCount(clientName)` - count messages
+
+**Automatic Persistence:**
+- Configuration changes saved immediately via `config` setter
+- Message history saved after each API response
+- Data loaded automatically on `BaseApiClient` initialization
+
+**Database Migrations:**
+- Managed by Flyway
+- Migration scripts in `src/main/resources/db/migration/`
+- Naming: `V{version}__{description}.sql`
+- Applied automatically on application startup
+
+### 6. HTTP Endpoints
 
 | Method | Endpoint | Description |
 |--------|----------|-------------|
@@ -221,8 +303,11 @@ GigaChat requires SSL certificate for API calls:
    ```kotlin
    class NewProviderApiClient(
        httpClient: HttpClient,
-       apiClientConfig: ApiClientConfig
-   ) : BaseApiClient(httpClient, apiClientConfig) {
+       apiClientConfig: ApiClientConfig,
+       clientName: String,
+       configRepository: ClientConfigRepository,
+       messageHistoryRepository: MessageHistoryRepository
+   ) : BaseApiClient(httpClient, apiClientConfig, clientName, configRepository, messageHistoryRepository) {
 
        override suspend fun executeApiRequest(context: RequestContext): StandardApiResponse {
            // Provider-specific API call
@@ -333,8 +418,10 @@ Update UI and display stats message
 - Reduces authentication overhead
 
 ### Message History
-- Stored in memory per client instance
-- No persistence between restarts
+- Stored in memory during runtime
+- **Automatically persisted to SQLite database**
+- Restored from database on application startup
+- Each API client maintains separate history
 - Can be cleared manually or via summarization
 
 ### Request Timeouts
@@ -418,13 +505,53 @@ ApiResult(
 - Verify API endpoints are reachable
 - Review server logs for errors
 
+## Database Management
+
+### Initialization
+
+Database is initialized automatically on application startup via `DatabaseManager.init()`:
+1. Creates SQLite DataSource (`jdbc:sqlite:./chat_data.db`)
+2. Runs Flyway migrations from `classpath:db/migration`
+3. Connects Exposed ORM to the database
+
+### Adding Migrations
+
+To add a new migration:
+1. Create file `src/main/resources/db/migration/V{N}__{Description}.sql`
+2. Write SQL DDL statements
+3. Restart application - Flyway will apply automatically
+
+Example:
+```sql
+-- V2__Add_user_preferences.sql
+CREATE TABLE user_preferences (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    user_id VARCHAR(100) NOT NULL,
+    theme VARCHAR(20) DEFAULT 'light'
+);
+```
+
+### Database Location
+
+- **Development:** `./chat_data.db` in project root
+- **File-based:** Portable across systems
+- **Backup:** Simply copy the `.db` file
+
+### Viewing Database
+
+Use any SQLite client:
+- **CLI:** `sqlite3 chat_data.db`
+- **GUI:** DB Browser for SQLite, DBeaver, DataGrip
+- **Query example:** `SELECT * FROM client_config;`
+
 ## Future Enhancements
 
 Potential improvements:
-- Persistent message history (database)
 - User authentication and multi-user support
 - Streaming responses (SSE)
 - File upload support
-- Export conversation history
-- Cost analytics dashboard
+- Export conversation history (JSON/CSV)
+- Cost analytics dashboard with charts
 - Additional LLM provider integrations
+- Database backup/restore UI
+- Search across message history

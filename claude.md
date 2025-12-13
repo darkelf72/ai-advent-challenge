@@ -83,7 +83,13 @@ Persistence layer uses Repository pattern for database operations:
 - `MessageHistoryRepository` - manages chat message history
 - Automatic save/load on configuration and history changes
 
-#### 4. Interface-Based Design
+#### 4. Service Layer Pattern
+Business logic is extracted into dedicated service classes:
+- `SummarizationService` - handles conversation summarization logic
+- Services are registered in Koin and injected where needed
+- Promotes separation of concerns and testability
+
+#### 5. Interface-Based Design
 `ApiClientInterface` defines the contract for all API clients, enabling polymorphism and easy testing.
 
 ### Project Structure
@@ -109,6 +115,8 @@ src/main/kotlin/
 │   └── ResponseDto.kt               # ApiResponse, ApiResult
 ├── di/
 │   └── AppModule.kt                 # Koin DI module
+├── service/
+│   └── SummarizationService.kt      # Summarization business logic
 ├── yandex/
 │   ├── YandexApiClient.kt           # Yandex implementation
 │   └── dto/YandexGptDto.kt          # Yandex-specific DTOs
@@ -120,7 +128,8 @@ resources/
 ├── truststore.jks                   # SSL certificate for GigaChat
 └── db/
     └── migration/
-        └── V1__Initial_schema.sql   # Flyway migration script
+        ├── V1__Initial_schema.sql           # Initial DB schema
+        └── V2__Add_auto_summarize_threshold.sql  # Auto-summarization threshold
 ```
 
 ## Key Components
@@ -150,8 +159,9 @@ resources/
 ```kotlin
 data class ApiClientConfig(
     val systemPrompt: String,
-    val temperature: Double,      // [0.0, 1.0]
-    val maxTokens: Int            // [1, 10000]
+    val temperature: Double,           // [0.0, 1.0]
+    val maxTokens: Int,                // [1, 10000]
+    val autoSummarizeThreshold: Int = 0  // [0, 20] - auto-summarize after N user messages (0 = disabled)
 )
 ```
 
@@ -185,20 +195,38 @@ History is automatically maintained by `BaseApiClient`:
 
 **Purpose:** Compress long conversation histories to save tokens
 
-**Flow:**
+**SummarizationService:**
+Dedicated service class that encapsulates summarization logic:
+- Takes target `ApiClientInterface` as parameter
+- Validates history is not empty
+- Formats structured JSON (system prompt + message history)
+- Calls `summarizeApiClient.sendRequest()`
+- Updates target client's system prompt with summary
+- Clears message history
+- Returns `SummarizeResponse` with compression metrics
+
+**Manual Summarization Flow:**
 1. User clicks "Summarize" button
 2. Frontend calls `POST /api/summarize`
-3. Backend:
-   - Validates history is not empty
-   - Formats structured text (system prompt + message history)
-   - Calls `summarizeApiClient.sendRequest()`
-   - Updates current client's system prompt with summary
-   - Clears message history
+3. Backend calls `summarizationService.summarize(apiClient)`
 4. Frontend:
    - Updates system prompt textarea
    - Displays system message with compression stats
 
-**Summarize Client:** Special GigaChatApiClient instance with custom prompt optimized for summarization (see `di/AppModule.kt:59-74`)
+**Automatic Summarization:**
+Triggered automatically after sending messages when configured:
+1. User sets "Auto (msgs)" threshold (1-20) via UI
+2. After each message, system counts user messages in history
+3. If `userMessageCount >= autoSummarizeThreshold`, auto-summarization runs
+4. Protection: never auto-summarizes for `summarizeApiClient` (prevents recursion)
+5. Errors in auto-summarization are logged but don't interrupt user flow
+
+**Configuration:**
+- `autoSummarizeThreshold = 0` → auto-summarization disabled
+- `autoSummarizeThreshold = 5` → auto-summarize after 5 user messages
+- Threshold is per-client and persisted to database
+
+**Summarize Client:** Special GigaChatApiClient instance with custom prompt optimized for summarization (see `di/AppModule.kt:59-83`)
 
 ### 5. Database Persistence
 
@@ -212,7 +240,8 @@ CREATE TABLE client_config (
     client_name VARCHAR(50) UNIQUE NOT NULL,
     system_prompt TEXT NOT NULL,
     temperature REAL NOT NULL,
-    max_tokens INTEGER NOT NULL
+    max_tokens INTEGER NOT NULL,
+    auto_summarize_threshold INTEGER NOT NULL DEFAULT 0
 );
 
 -- Message history
@@ -272,6 +301,8 @@ CREATE INDEX idx_message_history_order ON message_history(client_name, message_o
 | POST | `/api/switch-client` | Switch between clients |
 | GET | `/api/available-clients` | List available clients |
 | POST | `/api/summarize` | Summarize conversation |
+| GET | `/api/auto-summarize-threshold` | Get auto-summarize threshold |
+| POST | `/api/auto-summarize-threshold` | Update auto-summarize threshold |
 
 ## Configuration
 
@@ -357,6 +388,8 @@ fun HTML.chatPage() {
 - `switchClient(name)` - POST to `/api/switch-client`
 - `summarizeHistory()` - POST to `/api/summarize`
 - `clearHistory()` - POST to `/api/clear-history`
+- `updateAutoSummarizeThreshold(value)` - POST to `/api/auto-summarize-threshold`
+- `loadAutoSummarizeThreshold()` - GET from `/api/auto-summarize-threshold`
 - `addMessage(text, isUser)` - Add message to chat
 - `addSystemMessage(text)` - Add system notification with markdown
 
@@ -397,17 +430,31 @@ Update UI (system prompt, temperature, maxTokens) →
 Display system notification
 ```
 
-### 3. Summarizing Conversation
+### 3. Manual Summarization
 ```
 User clicks Summarize → summarizeHistory() →
 POST /api/summarize →
-Validate history not empty →
-Format structured text →
-summarizeApiClient.sendRequest() →
-Update current client's system prompt →
-Clear message history →
+summarizationService.summarize(apiClient) →
+  ├── Validate history not empty
+  ├── Format structured JSON
+  ├── summarizeApiClient.sendRequest()
+  ├── Update client's system prompt
+  └── Clear message history
 Return compression stats →
 Update UI and display stats message
+```
+
+### 4. Automatic Summarization
+```
+User sends message → handleSendMessage() →
+apiClient.sendRequest() →
+Check autoSummarizeThreshold > 0 →
+Count user messages in history →
+If userMessageCount >= threshold:
+  └── summarizationService.summarize(apiClient) →
+      ├── Validate not summarizeApiClient (recursion protection)
+      ├── Format and summarize
+      └── Update prompt & clear history
 ```
 
 ## Performance Considerations
@@ -454,10 +501,11 @@ ApiResult(
 3. Test features:
    - Send messages to both providers
    - Switch between clients
-   - Adjust temperature/maxTokens
+   - Adjust temperature/maxTokens/autoSummarizeThreshold
    - Update system prompt
    - Clear history
-   - Summarize conversation
+   - Manual summarization (button)
+   - Automatic summarization (set threshold > 0)
 
 ### Building
 ```bash
@@ -482,8 +530,9 @@ ApiResult(
 
 ### UI Updates
 - System prompt textarea syncs with backend
-- Temperature/maxTokens sliders sync with backend
+- Temperature/maxTokens/autoSummarizeThreshold inputs sync with backend
 - All updates persist across client switches
+- "Auto (msgs)" input appears next to Summarize button (0-20 range)
 
 ## Troubleshooting
 
@@ -523,13 +572,13 @@ To add a new migration:
 
 Example:
 ```sql
--- V2__Add_user_preferences.sql
-CREATE TABLE user_preferences (
-    id INTEGER PRIMARY KEY AUTOINCREMENT,
-    user_id VARCHAR(100) NOT NULL,
-    theme VARCHAR(20) DEFAULT 'light'
-);
+-- V2__Add_auto_summarize_threshold.sql
+ALTER TABLE client_config ADD COLUMN auto_summarize_threshold INTEGER NOT NULL DEFAULT 0;
 ```
+
+**Applied Migrations:**
+- V1: Initial schema (client_config, message_history tables)
+- V2: Added auto_summarize_threshold to client_config
 
 ### Database Location
 

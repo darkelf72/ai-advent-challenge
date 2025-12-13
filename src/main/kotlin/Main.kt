@@ -1,6 +1,5 @@
 import database.DatabaseManager
 import di.appModule
-import dto.ChatMessage
 import io.ktor.http.*
 import io.ktor.serialization.kotlinx.json.*
 import io.ktor.server.application.*
@@ -14,11 +13,11 @@ import io.ktor.server.response.*
 import io.ktor.server.routing.*
 import kotlinx.html.*
 import kotlinx.serialization.Serializable
-import kotlinx.serialization.encodeToString
 import kotlinx.serialization.json.Json
 import org.koin.core.context.startKoin
 import org.koin.core.qualifier.named
 import org.koin.java.KoinJavaComponent.get
+import service.SummarizationService
 
 @Serializable
 data class ChatRequest(val message: String)
@@ -62,11 +61,18 @@ data class SummarizeResponse(
     val compressionPercent: Int
 )
 
+@Serializable
+data class AutoSummarizeThresholdRequest(val threshold: Int)
+
+@Serializable
+data class AutoSummarizeThresholdResponse(val threshold: Int)
+
 // Текущий активный клиент
 private var currentClientName: String = "YandexGPT Pro 5.1"
 private lateinit var apiClient: ApiClientInterface
 private lateinit var availableClients: Map<String, ApiClientInterface>
 private lateinit var summarizeApiClient: ApiClientInterface
+private lateinit var summarizationService: SummarizationService
 
 fun main() {
     // Инициализация базы данных ДО запуска Koin
@@ -81,6 +87,7 @@ fun main() {
     availableClients = get(Map::class.java, named("availableClients")) as Map<String, ApiClientInterface>
     apiClient = availableClients.getValue(currentClientName)
     summarizeApiClient = get(ApiClientInterface::class.java, named("summarizeApiClient"))
+    summarizationService = get(SummarizationService::class.java)
 
     embeddedServer(Netty, port = 9999, host = "0.0.0.0") {
         configureServer()
@@ -109,6 +116,8 @@ fun Application.configureServer() {
         post("/api/switch-client") { handleSwitchClient(call) }
         get("/api/available-clients") { handleGetAvailableClients(call) }
         post("/api/summarize") { handleSummarize(call) }
+        get("/api/auto-summarize-threshold") { handleGetAutoSummarizeThreshold(call) }
+        post("/api/auto-summarize-threshold") { handleSetAutoSummarizeThreshold(call) }
     }
 }
 
@@ -117,6 +126,23 @@ private val json = Json { prettyPrint = true }
 suspend fun handleSendMessage(call: ApplicationCall) {
     val request = call.receive<ChatRequest>()
     val apiResponse = apiClient.sendRequest(request.message)
+
+    // Проверяем необходимость автоматической суммаризации
+    val threshold = apiClient.config.autoSummarizeThreshold
+    if (threshold > 0) {
+        // Считаем только user-сообщения
+        val userMessagesCount = apiClient.messageHistory.count { it.role == "user" }
+        if (userMessagesCount >= threshold) {
+            try {
+                // Выполняем автоматическую суммаризацию
+                summarizationService.summarize(apiClient)
+            } catch (e: Exception) {
+                // Логируем ошибку, но не прерываем основной поток
+                println("Auto-summarization failed: ${e.message}")
+            }
+        }
+    }
+
     val foo = """
         🕒 ${apiResponse.result!!.elapsedTime} мс
         ⬆️ ${apiResponse.result.promptTokens} токенов
@@ -203,49 +229,24 @@ suspend fun handleSwitchClient(call: ApplicationCall) {
 
 suspend fun handleSummarize(call: ApplicationCall) {
     try {
-        // Проверяем, что история не пустая
-        val messageHistory = apiClient.messageHistory
-        if (messageHistory.isEmpty()) {
-            call.respond(HttpStatusCode.BadRequest, mapOf("error" to "История сообщений пуста. Нечего суммаризовать."))
-            return
-        }
-
-        val summarizationText = listOf(ChatMessage("system", apiClient.config.systemPrompt))
-            .plus(messageHistory)
-            .let { json.encodeToString(mapOf("messages" to it))}
-
-        // Выполняем запрос к summarizeApiClient
-        val summarizeResponse = summarizeApiClient.sendRequest(summarizationText)
-
-        // Парсим метрики из результата
-        val oldTokensCount = summarizeResponse.result!!.promptTokens //todo refactor nullable
-        val newTokensCount = summarizeResponse.result.completionTokens
-
-        // Вычисляем процент сжатия
-        val compressionPercent = if (oldTokensCount > 0) {
-            ((oldTokensCount - newTokensCount).toDouble() / oldTokensCount * 100).toInt()
-        } else {
-            0
-        }
-
-        // Обновляем системный промпт текущего apiClient
-        apiClient.config = apiClient.config.copy(systemPrompt = summarizeResponse.message)
-
-        // Возвращаем результат
-        call.respond(
-            SummarizeResponse(
-                newSystemPrompt = summarizeResponse.message,
-                oldMessagesCount = messageHistory.size,
-                oldTokensCount = oldTokensCount,
-                newTokensCount = newTokensCount,
-                compressionPercent = compressionPercent
-            )
-        )
-        // Очищаем историю сообщений
-        apiClient.clearMessages()
+        // Используем SummarizationService для выполнения суммаризации
+        val result = summarizationService.summarize(apiClient)
+        call.respond(result)
+    } catch (e: IllegalStateException) {
+        call.respond(HttpStatusCode.BadRequest, mapOf("error" to e.message))
     } catch (e: Exception) {
         call.respond(HttpStatusCode.InternalServerError, mapOf("error" to "Ошибка при суммаризации: ${e.message}"))
     }
+}
+
+suspend fun handleGetAutoSummarizeThreshold(call: ApplicationCall) {
+    call.respond(AutoSummarizeThresholdResponse(threshold = apiClient.config.autoSummarizeThreshold))
+}
+
+suspend fun handleSetAutoSummarizeThreshold(call: ApplicationCall) {
+    val request = call.receive<AutoSummarizeThresholdRequest>()
+    apiClient.config = apiClient.config.copy(autoSummarizeThreshold = request.threshold)
+    call.respond(AutoSummarizeThresholdResponse(threshold = request.threshold))
 }
 
 fun HTML.chatPage() {
@@ -469,6 +470,41 @@ fun HTML.chatPage() {
                         margin: 0;
                     }
                     #maxTokensInput[type=number] {
+                        -moz-appearance: textfield;
+                    }
+                    .auto-summarize-container {
+                        display: flex;
+                        align-items: center;
+                        gap: 10px;
+                        margin-left: 20px;
+                    }
+                    .auto-summarize-label {
+                        font-size: 13px;
+                        font-weight: bold;
+                        color: #666;
+                        white-space: nowrap;
+                    }
+                    #autoSummarizeThresholdInput {
+                        width: 80px;
+                        padding: 6px 10px;
+                        border: 2px solid #e0e0e0;
+                        border-radius: 6px;
+                        font-size: 14px;
+                        font-weight: bold;
+                        color: #667eea;
+                        text-align: center;
+                        outline: none;
+                        transition: border-color 0.3s;
+                    }
+                    #autoSummarizeThresholdInput:focus {
+                        border-color: #667eea;
+                    }
+                    #autoSummarizeThresholdInput::-webkit-inner-spin-button,
+                    #autoSummarizeThresholdInput::-webkit-outer-spin-button {
+                        -webkit-appearance: none;
+                        margin: 0;
+                    }
+                    #autoSummarizeThresholdInput[type=number] {
                         -moz-appearance: textfield;
                     }
                     @media (max-width: 600px) {
@@ -700,6 +736,18 @@ fun HTML.chatPage() {
                         classes = setOf("control-btn", "btn-primary")
                         +"Summarize"
                     }
+                    div(classes = "auto-summarize-container") {
+                        div(classes = "auto-summarize-label") { +"Auto (msgs):" }
+                        input {
+                            type = InputType.number
+                            id = "autoSummarizeThresholdInput"
+                            name = "autoSummarizeThreshold"
+                            attributes["min"] = "0"
+                            attributes["max"] = "20"
+                            attributes["step"] = "1"
+                            attributes["value"] = "0"
+                        }
+                    }
                     button {
                         id = "clearHistoryButton"
                         classes = setOf("control-btn", "btn-danger")
@@ -780,6 +828,7 @@ fun HTML.chatPage() {
                     const temperatureSlider = document.getElementById('temperatureSlider');
                     const temperatureValue = document.getElementById('temperatureValue');
                     const maxTokensInput = document.getElementById('maxTokensInput');
+                    const autoSummarizeThresholdInput = document.getElementById('autoSummarizeThresholdInput');
                     const clientSelector = document.getElementById('clientSelector');
 
                     const loadTemperature = async () => {
@@ -920,6 +969,84 @@ fun HTML.chatPage() {
                         if (value > 10000) value = 10000;
                         maxTokensInput.value = value;
                         updateMaxTokens(value);
+                    });
+
+                    const loadAutoSummarizeThreshold = async () => {
+                        try {
+                            const response = await fetch('/api/auto-summarize-threshold');
+                            if (response.ok) {
+                                const data = await response.json();
+                                autoSummarizeThresholdInput.value = data.threshold;
+                            }
+                        } catch (error) {
+                            console.error('Failed to load auto-summarize threshold:', error);
+                        }
+                    };
+
+                    const updateAutoSummarizeThreshold = async (value) => {
+                        try {
+                            const response = await fetch('/api/auto-summarize-threshold', {
+                                method: 'POST',
+                                headers: { 'Content-Type': 'application/json' },
+                                body: JSON.stringify({ threshold: parseInt(value) })
+                            });
+
+                            if (response.ok) {
+                                const messageDiv = document.createElement('div');
+                                messageDiv.className = 'message ai-message';
+
+                                const label = document.createElement('div');
+                                label.className = 'message-label ai-label';
+
+                                const labelText = document.createElement('span');
+                                labelText.textContent = 'System';
+
+                                const timeStamp = document.createElement('span');
+                                timeStamp.className = 'message-time';
+                                timeStamp.textContent = formatTimestamp();
+
+                                label.appendChild(labelText);
+                                label.appendChild(timeStamp);
+
+                                const content = document.createElement('div');
+                                content.className = 'message-content';
+                                const thresholdText = value === '0'
+                                    ? 'Автосуммаризация отключена'
+                                    : `Установлен порог автосуммаризации: ${value} сообщений`;
+                                content.textContent = thresholdText;
+                                content.style.fontStyle = 'italic';
+                                content.style.color = '#999';
+
+                                messageDiv.appendChild(label);
+                                messageDiv.appendChild(content);
+                                chatBox.appendChild(messageDiv);
+                                chatBox.scrollTop = chatBox.scrollHeight;
+                            } else {
+                                console.error('Failed to update auto-summarize threshold');
+                            }
+                        } catch (error) {
+                            console.error('Error updating auto-summarize threshold:', error);
+                        }
+                    };
+
+                    autoSummarizeThresholdInput.addEventListener('input', (e) => {
+                        // Разрешаем только цифры
+                        e.target.value = e.target.value.replace(/[^0-9]/g, '');
+                    });
+
+                    autoSummarizeThresholdInput.addEventListener('keydown', (e) => {
+                        if (e.key === 'Enter') {
+                            e.preventDefault();
+                            autoSummarizeThresholdInput.blur();
+                        }
+                    });
+
+                    autoSummarizeThresholdInput.addEventListener('change', (e) => {
+                        let value = parseInt(e.target.value);
+                        if (isNaN(value) || value < 0) value = 0;
+                        if (value > 20) value = 20;
+                        autoSummarizeThresholdInput.value = value;
+                        updateAutoSummarizeThreshold(value);
                     });
 
                     const loadSystemPrompt = async () => {
@@ -1168,8 +1295,9 @@ fun HTML.chatPage() {
                                 temperatureSlider.value = data.temperature;
                                 temperatureValue.textContent = data.temperature.toFixed(1);
 
-                                // Загружаем maxTokens для нового клиента
+                                // Загружаем maxTokens и autoSummarizeThreshold для нового клиента
                                 await loadMaxTokens();
+                                await loadAutoSummarizeThreshold();
 
                                 // Выводим сообщение в чат
                                 const messageDiv = document.createElement('div');
@@ -1227,6 +1355,7 @@ fun HTML.chatPage() {
                     loadSystemPrompt();
                     loadTemperature();
                     loadMaxTokens();
+                    loadAutoSummarizeThreshold();
                     messageInput.focus();
                 """
                 )

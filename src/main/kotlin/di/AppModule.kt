@@ -11,6 +11,7 @@ import io.ktor.serialization.kotlinx.json.*
 import org.koin.core.qualifier.named
 import org.koin.dsl.module
 import sber.GigaChatApiClient
+import service.SummarizationService
 import yandex.YandexApiClient
 import java.security.KeyStore
 import javax.net.ssl.TrustManagerFactory
@@ -20,6 +21,10 @@ val appModule = module {
     // Repositories
     single { ClientConfigRepository() }
     single { MessageHistoryRepository() }
+
+    // Services
+    single { SummarizationService(summarizeApiClient = get(named("summarizeApiClient"))) }
+
     // Обычный HttpClient для YandexApiClient
     single<HttpClient>(named("standardHttpClient")) {
         HttpClient(CIO) {

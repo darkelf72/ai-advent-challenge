@@ -8,6 +8,7 @@ object ClientConfigTable : Table("client_config") {
     val systemPrompt = text("system_prompt")
     val temperature = double("temperature")
     val maxTokens = integer("max_tokens")
+    val autoSummarizeThreshold = integer("auto_summarize_threshold").default(0)
 
     override val primaryKey = PrimaryKey(id)
 }

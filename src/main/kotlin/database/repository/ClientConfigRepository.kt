@@ -19,6 +19,7 @@ class ClientConfigRepository {
                     it[systemPrompt] = config.systemPrompt
                     it[temperature] = config.temperature
                     it[maxTokens] = config.maxTokens
+                    it[autoSummarizeThreshold] = config.autoSummarizeThreshold
                 }
             } else {
                 ClientConfigTable.insert {
@@ -26,6 +27,7 @@ class ClientConfigRepository {
                     it[systemPrompt] = config.systemPrompt
                     it[temperature] = config.temperature
                     it[maxTokens] = config.maxTokens
+                    it[autoSummarizeThreshold] = config.autoSummarizeThreshold
                 }
             }
         }
@@ -40,7 +42,8 @@ class ClientConfigRepository {
                     ApiClientConfig(
                         systemPrompt = it[ClientConfigTable.systemPrompt],
                         temperature = it[ClientConfigTable.temperature],
-                        maxTokens = it[ClientConfigTable.maxTokens]
+                        maxTokens = it[ClientConfigTable.maxTokens],
+                        autoSummarizeThreshold = it[ClientConfigTable.autoSummarizeThreshold]
                     )
                 }
         }

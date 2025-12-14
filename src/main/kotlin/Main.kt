@@ -1283,11 +1283,10 @@ fun HTML.chatPage() {
                                 temperatureSlider.value = data.temperature;
                                 temperatureValue.textContent = data.temperature.toFixed(1);
 
-                                // Загружаем maxTokens и autoSummarizeThreshold для нового клиента
+                                await loadSystemPrompt();
+                                await loadTemperature();
                                 await loadMaxTokens();
                                 await loadAutoSummarizeThreshold();
-
-                                // Загружаем историю сообщений нового клиента
                                 await loadMessageHistory();
 
                                 // Выводим сообщение в чат

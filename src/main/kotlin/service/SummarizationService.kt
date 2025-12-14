@@ -29,6 +29,7 @@ class SummarizationService(
             throw IllegalStateException("История сообщений пуста. Нечего суммаризовать.")
         }
 
+        summarizeApiClient.clearMessages()
         // Формируем текст для суммаризации: системный промпт + история сообщений
         val summarizationText = listOf(ChatMessage("system", targetClient.config.systemPrompt))
             .plus(messageHistory)

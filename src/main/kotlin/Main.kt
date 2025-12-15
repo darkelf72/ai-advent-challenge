@@ -18,6 +18,8 @@ import org.koin.core.context.startKoin
 import org.koin.core.qualifier.named
 import org.koin.java.KoinJavaComponent.get
 import service.SummarizationService
+import mcp.McpClient
+import mcp.McpException
 
 @Serializable
 data class ChatRequest(val message: String)
@@ -67,12 +69,25 @@ data class AutoSummarizeThresholdRequest(val threshold: Int)
 @Serializable
 data class AutoSummarizeThresholdResponse(val threshold: Int)
 
+@Serializable
+data class McpToolsResponse(
+    val tools: List<McpToolDto>
+)
+
+@Serializable
+data class McpToolDto(
+    val name: String,
+    val description: String,
+    val inputSchema: String // JSON string
+)
+
 // Текущий активный клиент
 private var currentClientName: String = "YandexGPT Pro 5.1"
 private lateinit var apiClient: ApiClientInterface
 private lateinit var availableClients: Map<String, ApiClientInterface>
 private lateinit var summarizeApiClient: ApiClientInterface
 private lateinit var summarizationService: SummarizationService
+private lateinit var mcpClient: McpClient
 
 fun main() {
     // Инициализация базы данных ДО запуска Koin
@@ -88,6 +103,7 @@ fun main() {
     apiClient = availableClients.getValue(currentClientName)
     summarizeApiClient = get(ApiClientInterface::class.java, named("summarizeApiClient"))
     summarizationService = get(SummarizationService::class.java)
+    mcpClient = get(McpClient::class.java)
 
     embeddedServer(Netty, port = 9999, host = "0.0.0.0") {
         configureServer()
@@ -118,6 +134,7 @@ fun Application.configureServer() {
         post("/api/summarize") { handleSummarize(call) }
         get("/api/auto-summarize-threshold") { handleGetAutoSummarizeThreshold(call) }
         post("/api/auto-summarize-threshold") { handleSetAutoSummarizeThreshold(call) }
+        get("/api/mcp-tools") { handleGetMcpTools(call) }
     }
 }
 
@@ -230,6 +247,37 @@ suspend fun handleSetAutoSummarizeThreshold(call: ApplicationCall) {
     val request = call.receive<AutoSummarizeThresholdRequest>()
     apiClient.config = apiClient.config.copy(autoSummarizeThreshold = request.threshold)
     call.respond(AutoSummarizeThresholdResponse(threshold = request.threshold))
+}
+
+suspend fun handleGetMcpTools(call: ApplicationCall) {
+    try {
+        // Fetch all tools from MCP server
+        val tools = mcpClient.listAllTools()
+
+        // Convert to response format
+        val toolDtos = tools.map { tool ->
+            McpToolDto(
+                name = tool.name,
+                description = tool.description ?: "No description",
+                inputSchema = json.encodeToString(mcp.dto.InputSchema.serializer(), tool.inputSchema)
+            )
+        }
+
+        call.respond(McpToolsResponse(tools = toolDtos))
+    } catch (e: McpException) {
+        println("MCP error: ${e.message}")
+        call.respond(
+            HttpStatusCode.BadGateway,
+            mapOf("error" to "MCP server error: ${e.message}")
+        )
+    } catch (e: Exception) {
+        println("Error fetching MCP tools: ${e.message}")
+        e.printStackTrace()
+        call.respond(
+            HttpStatusCode.InternalServerError,
+            mapOf("error" to "Failed to fetch MCP tools: ${e.message}")
+        )
+    }
 }
 
 fun HTML.chatPage() {
@@ -689,6 +737,90 @@ fun HTML.chatPage() {
                         font-style: italic;
                         padding: 10px;
                     }
+                    .modal-overlay {
+                        display: none;
+                        position: fixed;
+                        top: 0;
+                        left: 0;
+                        width: 100%;
+                        height: 100%;
+                        background: rgba(0, 0, 0, 0.5);
+                        z-index: 1000;
+                        justify-content: center;
+                        align-items: center;
+                    }
+                    .modal-overlay.show {
+                        display: flex;
+                    }
+                    .modal-content {
+                        background: white;
+                        border-radius: 12px;
+                        padding: 20px;
+                        max-width: 700px;
+                        max-height: 80vh;
+                        overflow-y: auto;
+                        box-shadow: 0 10px 40px rgba(0,0,0,0.3);
+                    }
+                    .modal-header {
+                        display: flex;
+                        justify-content: space-between;
+                        align-items: center;
+                        margin-bottom: 20px;
+                        border-bottom: 2px solid #e0e0e0;
+                        padding-bottom: 10px;
+                    }
+                    .modal-title {
+                        font-size: 20px;
+                        font-weight: bold;
+                        color: #667eea;
+                    }
+                    .modal-close {
+                        background: none;
+                        border: none;
+                        font-size: 24px;
+                        cursor: pointer;
+                        color: #999;
+                        padding: 0;
+                        width: 30px;
+                        height: 30px;
+                    }
+                    .modal-close:hover {
+                        color: #333;
+                    }
+                    .tool-item {
+                        border: 1px solid #e0e0e0;
+                        border-radius: 8px;
+                        padding: 15px;
+                        margin-bottom: 15px;
+                        background: #f9f9f9;
+                    }
+                    .tool-name {
+                        font-size: 16px;
+                        font-weight: bold;
+                        color: #667eea;
+                        margin-bottom: 5px;
+                    }
+                    .tool-description {
+                        font-size: 14px;
+                        color: #666;
+                        margin-bottom: 10px;
+                    }
+                    .tool-schema {
+                        background: #2d2d2d;
+                        color: #f8f8f2;
+                        padding: 10px;
+                        border-radius: 6px;
+                        font-family: 'Courier New', monospace;
+                        font-size: 12px;
+                        overflow-x: auto;
+                        white-space: pre;
+                    }
+                    .tool-schema-label {
+                        font-size: 12px;
+                        font-weight: bold;
+                        color: #999;
+                        margin-bottom: 5px;
+                    }
                 """)
             }
         }
@@ -730,6 +862,11 @@ fun HTML.chatPage() {
                         id = "clearHistoryButton"
                         classes = setOf("control-btn", "btn-danger")
                         +"Clear history"
+                    }
+                    button {
+                        id = "viewMcpToolsButton"
+                        classes = setOf("control-btn", "btn-primary")
+                        +"View MCP Tools"
                     }
                 }
 
@@ -775,6 +912,21 @@ fun HTML.chatPage() {
                             attributes["value"] = "100"
                         }
                     }
+                }
+            }
+
+            div {
+                id = "mcpToolsModal"
+                classes = setOf("modal-overlay")
+                div(classes = "modal-content") {
+                    div(classes = "modal-header") {
+                        div(classes = "modal-title") { +"MCP Tools" }
+                        button(classes = "modal-close") {
+                            id = "closeMcpModalButton"
+                            +"\u00D7"
+                        }
+                    }
+                    div { id = "mcpToolsContainer" }
                 }
             }
 
@@ -1360,6 +1512,89 @@ fun HTML.chatPage() {
                             console.error('Failed to load message history:', error);
                         }
                     };
+
+                    const mcpToolsModal = document.getElementById('mcpToolsModal');
+                    const mcpToolsContainer = document.getElementById('mcpToolsContainer');
+                    const viewMcpToolsButton = document.getElementById('viewMcpToolsButton');
+                    const closeMcpModalButton = document.getElementById('closeMcpModalButton');
+
+                    const loadMcpTools = async () => {
+                        try {
+                            viewMcpToolsButton.disabled = true;
+                            mcpToolsContainer.innerHTML = '<div class="loading">Загрузка инструментов...</div>';
+                            mcpToolsModal.classList.add('show');
+
+                            const response = await fetch('/api/mcp-tools');
+
+                            if (response.ok) {
+                                const data = await response.json();
+                                displayMcpTools(data.tools);
+                            } else {
+                                const error = await response.json();
+                                mcpToolsContainer.innerHTML = `<div style="color: red;">Ошибка: ${'$'}{error.error}</div>`;
+                            }
+                        } catch (error) {
+                            mcpToolsContainer.innerHTML = `<div style="color: red;">Ошибка сети: ${'$'}{error.message}</div>`;
+                        } finally {
+                            viewMcpToolsButton.disabled = false;
+                        }
+                    };
+
+                    const displayMcpTools = (tools) => {
+                        if (tools.length === 0) {
+                            mcpToolsContainer.innerHTML = '<div style="color: #999; text-align: center;">Нет доступных инструментов</div>';
+                            return;
+                        }
+
+                        mcpToolsContainer.innerHTML = '';
+
+                        tools.forEach(tool => {
+                            const toolDiv = document.createElement('div');
+                            toolDiv.className = 'tool-item';
+
+                            const nameDiv = document.createElement('div');
+                            nameDiv.className = 'tool-name';
+                            nameDiv.textContent = tool.name;
+
+                            const descDiv = document.createElement('div');
+                            descDiv.className = 'tool-description';
+                            descDiv.textContent = tool.description;
+
+                            const schemaLabel = document.createElement('div');
+                            schemaLabel.className = 'tool-schema-label';
+                            schemaLabel.textContent = 'Input Schema:';
+
+                            const schemaDiv = document.createElement('pre');
+                            schemaDiv.className = 'tool-schema';
+                            // Pretty print JSON
+                            try {
+                                const schema = JSON.parse(tool.inputSchema);
+                                schemaDiv.textContent = JSON.stringify(schema, null, 2);
+                            } catch (e) {
+                                schemaDiv.textContent = tool.inputSchema;
+                            }
+
+                            toolDiv.appendChild(nameDiv);
+                            toolDiv.appendChild(descDiv);
+                            toolDiv.appendChild(schemaLabel);
+                            toolDiv.appendChild(schemaDiv);
+                            mcpToolsContainer.appendChild(toolDiv);
+                        });
+                    };
+
+                    const closeMcpModal = () => {
+                        mcpToolsModal.classList.remove('show');
+                    };
+
+                    viewMcpToolsButton.addEventListener('click', loadMcpTools);
+                    closeMcpModalButton.addEventListener('click', closeMcpModal);
+
+                    // Close modal when clicking outside
+                    mcpToolsModal.addEventListener('click', (e) => {
+                        if (e.target === mcpToolsModal) {
+                            closeMcpModal();
+                        }
+                    });
 
                     loadSystemPrompt();
                     loadTemperature();

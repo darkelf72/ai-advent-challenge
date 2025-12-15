@@ -5,6 +5,7 @@ import config.apiClientConfig
 import database.repository.ClientConfigRepository
 import database.repository.MessageHistoryRepository
 import io.ktor.client.*
+import mcp.McpClient
 import io.ktor.client.engine.cio.*
 import io.ktor.client.plugins.contentnegotiation.*
 import io.ktor.serialization.kotlinx.json.*
@@ -24,6 +25,9 @@ val appModule = module {
 
     // Services
     single { SummarizationService(summarizeApiClient = get(named("summarizeApiClient"))) }
+
+    // MCP Client
+    single { McpClient(httpClient = get(named("standardHttpClient"))) }
 
     // Обычный HttpClient для YandexApiClient
     single<HttpClient>(named("standardHttpClient")) {

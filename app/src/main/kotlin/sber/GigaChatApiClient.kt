@@ -11,11 +11,19 @@ import io.ktor.client.call.*
 import io.ktor.client.request.*
 import io.ktor.client.statement.*
 import io.ktor.http.*
+import io.modelcontextprotocol.kotlin.sdk.client.Client
+import io.modelcontextprotocol.kotlin.sdk.client.SseClientTransport
+import io.modelcontextprotocol.kotlin.sdk.types.ToolSchema
+import kotlinx.coroutines.runBlocking
+import kotlinx.serialization.json.Json
+import org.koin.java.KoinJavaComponent
+import org.koin.java.KoinJavaComponent.get
 import org.slf4j.LoggerFactory
 import sber.dto.GigaChatMessage
 import sber.dto.GigaChatRequest
 import sber.dto.GigaChatResponse
 import sber.dto.OAuthTokenResponse
+import sber.dto.Tool
 import java.math.BigDecimal
 import java.math.RoundingMode
 import java.util.*
@@ -87,11 +95,19 @@ class GigaChatApiClient(
             GigaChatMessage(role = msg.role, content = msg.content)
         }
 
+
+
+        println("═══════════════════════════════════════════════════════════")
+        println("Available tools:")
+        println("═══════════════════════════════════════════════════════════")
+        println()
+
         val request = GigaChatRequest(
             model = "GigaChat",
             messages = listOf(systemMessage) + historyMessages,
             temperature = context.temperature,
-            max_tokens = context.maxTokens
+            max_tokens = context.maxTokens,
+            functions = foo()
         )
 
         println("Sending POST request to: $BASE_URL\n$request")
@@ -121,5 +137,27 @@ class GigaChatApiClient(
         return BigDecimal(1500.0 / 1000000.0 * totalTokens)
             .setScale(2, RoundingMode.HALF_UP)
             .toDouble()
+    }
+
+    private fun foo(): List<Tool> {
+        val mcpClient1 = get<Client>(Client::class.java)
+        val sseClientTransport = get<SseClientTransport>(SseClientTransport::class.java)
+
+        // Connect to server
+        runBlocking { mcpClient1.connect(sseClientTransport) }
+
+        println("✓ Successfully connected to MCP server")
+
+
+        // Request list of available tools
+        val toolsResponse = runBlocking { mcpClient1.listTools() }
+        val tools = toolsResponse.tools
+        return tools.map {
+            Tool(
+                name = it.name,
+                description = it.description!!,
+                parameters = it.inputSchema.properties
+            )
+        }
     }
 }

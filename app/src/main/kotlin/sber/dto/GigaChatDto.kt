@@ -1,6 +1,7 @@
 package sber.dto
 
 import kotlinx.serialization.Serializable
+import kotlinx.serialization.json.JsonObject
 
 @Serializable
 data class GigaChatMessage(
@@ -14,7 +15,9 @@ data class GigaChatRequest(
     val messages: List<GigaChatMessage>,
     val temperature: Double = 0.7,
     val top_p: Double = 0.9,
-    val max_tokens: Int = 1024
+    val max_tokens: Int = 1024,
+    val function_call: String =  "auto",
+    val functions: List<Tool>
 )
 
 @Serializable
@@ -45,4 +48,11 @@ data class Usage(
 data class OAuthTokenResponse(
     val access_token: String,
     val expires_at: Long
+)
+
+@Serializable
+data class Tool(
+    val name: String,
+    val description: String,
+    val parameters: JsonObject?
 )

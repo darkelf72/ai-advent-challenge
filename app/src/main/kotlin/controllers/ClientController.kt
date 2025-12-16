@@ -14,7 +14,7 @@ import io.ktor.server.response.*
 class ClientController(
     private val availableClients: Map<String, ApiClientInterface>
 ) {
-    var currentClientName: String = "YandexGPT Pro 5.1"
+    var currentClientName: String = "GigaChat 2 Lite"
         private set
 
     var apiClient: ApiClientInterface = availableClients.getValue(currentClientName)

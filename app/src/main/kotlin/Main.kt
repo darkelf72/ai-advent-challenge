@@ -14,6 +14,9 @@ import io.ktor.server.netty.*
 import io.ktor.server.plugins.contentnegotiation.*
 import io.ktor.server.plugins.cors.routing.*
 import io.ktor.server.routing.*
+import io.modelcontextprotocol.kotlin.sdk.client.Client
+import io.modelcontextprotocol.kotlin.sdk.client.SseClientTransport
+import kotlinx.coroutines.runBlocking
 import mcp.McpClient
 import org.koin.core.context.startKoin
 import org.koin.core.qualifier.named
@@ -29,6 +32,8 @@ fun main() {
     startKoin {
         modules(appModule)
     }
+
+
 
     // Get dependencies from Koin
     val availableClients = get<Map<String, ApiClientInterface>>(Map::class.java, named("availableClients"))

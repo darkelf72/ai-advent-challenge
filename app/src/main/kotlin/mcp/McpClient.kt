@@ -16,7 +16,8 @@ class McpClient(
     private val httpClient: HttpClient
 ) {
     private companion object {
-        const val MCP_URL = "https://mcp.context7.com/mcp"
+//        const val MCP_URL = "https://mcp.context7.com/mcp"
+        const val MCP_URL = "http://localhost:8082"
     }
 
     private val json = Json {

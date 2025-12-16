@@ -8,7 +8,13 @@ import io.ktor.client.*
 import mcp.McpClient
 import io.ktor.client.engine.cio.*
 import io.ktor.client.plugins.contentnegotiation.*
+import io.ktor.client.plugins.sse.SSE
 import io.ktor.serialization.kotlinx.json.*
+import io.modelcontextprotocol.kotlin.sdk.client.Client
+import io.modelcontextprotocol.kotlin.sdk.client.ClientOptions
+import io.modelcontextprotocol.kotlin.sdk.client.SseClientTransport
+import io.modelcontextprotocol.kotlin.sdk.types.Implementation
+import kotlinx.serialization.json.Json
 import org.koin.core.qualifier.named
 import org.koin.dsl.module
 import sber.GigaChatApiClient
@@ -28,6 +34,44 @@ val appModule = module {
 
     // MCP Client
     single { McpClient(httpClient = get(named("standardHttpClient"))) }
+//    single { McpClient(httpClient = get(named("mcpHttpClient"))) }
+
+    single<Client> {
+        // Create HTTP client for SSE transport
+        val transport = SseClientTransport(
+            urlString = "http://localhost:8082",
+            client = get<HttpClient>(named("mcpHttpClient"))
+        )
+        Client(
+            clientInfo = Implementation(
+                name = "mcp-cli-client",
+                version = "1.0.0"
+            ),
+            options = ClientOptions()
+        )
+    }
+
+    single<SseClientTransport> {
+        // Create HTTP client for SSE transport
+        SseClientTransport(
+            urlString = "http://localhost:8082",
+            client = get<HttpClient>(named("mcpHttpClient"))
+        )
+    }
+
+    single<HttpClient>(named("mcpHttpClient")) {
+        // Create HTTP client for SSE transport
+        HttpClient(CIO) {
+            install(SSE)
+            install(ContentNegotiation) {
+                json(Json {
+                    ignoreUnknownKeys = true
+                    prettyPrint = true
+                    isLenient = true
+                })
+            }
+        }
+    }
 
     // Обычный HttpClient для YandexApiClient
     single<HttpClient>(named("standardHttpClient")) {

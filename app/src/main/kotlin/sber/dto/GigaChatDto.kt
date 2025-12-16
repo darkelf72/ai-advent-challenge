@@ -1,12 +1,21 @@
 package sber.dto
 
 import kotlinx.serialization.Serializable
+import kotlinx.serialization.json.JsonElement
 import kotlinx.serialization.json.JsonObject
 
 @Serializable
 data class GigaChatMessage(
     val role: String,
-    val content: String
+    val content: String,
+    val function_call: FunctionCall? = null,
+    val functions_state_id: String? = null
+)
+
+@Serializable
+data class FunctionCall(
+    val name: String,
+    val arguments: JsonObject?,
 )
 
 @Serializable
@@ -54,5 +63,5 @@ data class OAuthTokenResponse(
 data class Tool(
     val name: String,
     val description: String,
-    val parameters: JsonObject?
+    val parameters: JsonElement?
 )

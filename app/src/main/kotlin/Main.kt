@@ -33,7 +33,9 @@ fun main() {
         modules(appModule)
     }
 
-
+    val mcpClient1 = get<Client>(Client::class.java)
+    val sseClientTransport = get<SseClientTransport>(SseClientTransport::class.java)
+    runBlocking { mcpClient1.connect(sseClientTransport) }
 
     // Get dependencies from Koin
     val availableClients = get<Map<String, ApiClientInterface>>(Map::class.java, named("availableClients"))

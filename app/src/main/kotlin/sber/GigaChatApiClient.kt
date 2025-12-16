@@ -13,17 +13,12 @@ import io.ktor.client.statement.*
 import io.ktor.http.*
 import io.modelcontextprotocol.kotlin.sdk.client.Client
 import io.modelcontextprotocol.kotlin.sdk.client.SseClientTransport
-import io.modelcontextprotocol.kotlin.sdk.types.ToolSchema
-import kotlinx.coroutines.runBlocking
-import kotlinx.serialization.json.Json
-import org.koin.java.KoinJavaComponent
+import io.modelcontextprotocol.kotlin.sdk.types.CallToolRequest
+import io.modelcontextprotocol.kotlin.sdk.types.CallToolRequestParams
+import kotlinx.serialization.json.JsonObject
 import org.koin.java.KoinJavaComponent.get
 import org.slf4j.LoggerFactory
-import sber.dto.GigaChatMessage
-import sber.dto.GigaChatRequest
-import sber.dto.GigaChatResponse
-import sber.dto.OAuthTokenResponse
-import sber.dto.Tool
+import sber.dto.*
 import java.math.BigDecimal
 import java.math.RoundingMode
 import java.util.*
@@ -95,19 +90,12 @@ class GigaChatApiClient(
             GigaChatMessage(role = msg.role, content = msg.content)
         }
 
-
-
-        println("═══════════════════════════════════════════════════════════")
-        println("Available tools:")
-        println("═══════════════════════════════════════════════════════════")
-        println()
-
         val request = GigaChatRequest(
             model = "GigaChat",
             messages = listOf(systemMessage) + historyMessages,
             temperature = context.temperature,
             max_tokens = context.maxTokens,
-            functions = foo()
+            functions = getTools()
         )
 
         println("Sending POST request to: $BASE_URL\n$request")
@@ -120,6 +108,13 @@ class GigaChatApiClient(
         println("Status: ${response.status}")
         val body = response.body<GigaChatResponse>()
         println(body)
+
+        if (body.choices.first().finish_reason == "function_call") {
+            if (body.choices.first().message.function_call?.name == "reverse") {
+                val result = execReverseTool(body.choices.first().message.function_call!!.arguments!!)
+
+            }
+        }
 
         return StandardApiResponse(
             answer = body.choices.first().message.content,
@@ -139,19 +134,18 @@ class GigaChatApiClient(
             .toDouble()
     }
 
-    private fun foo(): List<Tool> {
-        val mcpClient1 = get<Client>(Client::class.java)
+    private suspend fun getTools(): List<Tool> {
+        val mcpClient = get<Client>(Client::class.java)
         val sseClientTransport = get<SseClientTransport>(SseClientTransport::class.java)
 
         // Connect to server
-        runBlocking { mcpClient1.connect(sseClientTransport) }
 
         println("✓ Successfully connected to MCP server")
 
-
         // Request list of available tools
-        val toolsResponse = runBlocking { mcpClient1.listTools() }
+        val toolsResponse = mcpClient.listTools()
         val tools = toolsResponse.tools
+//        mcpClient.close()
         return tools.map {
             Tool(
                 name = it.name,
@@ -159,5 +153,20 @@ class GigaChatApiClient(
                 parameters = it.inputSchema.properties
             )
         }
+
+    }
+
+    private suspend fun execReverseTool(text: JsonObject): JsonObject? {
+        val mcpClient = get<Client>(Client::class.java)
+//        val sseClientTransport = get<SseClientTransport>(SseClientTransport::class.java)
+
+        // Connect to server
+//        mcpClient.connect(sseClientTransport)
+        println("✓ Successfully connected to MCP server")
+
+        val request = CallToolRequest(CallToolRequestParams("reverse", text))
+        val result = mcpClient.callTool(request)
+
+        return result.structuredContent
     }
 }

@@ -115,7 +115,7 @@ class GigaChatApiClient(
             if (functionCall?.name == "city_in_uppercase") {
                 logger.info("Executing function call: ${functionCall.name}")
                 // Выполняем функцию и получаем результат
-                val functionResult = execReverseWordTool(functionCall.arguments!!)
+                val functionResult = execCityInUpperCaseTool(functionCall.arguments!!)
                 logger.info("Function result: $functionResult")
 
                 // Создаем список сообщений для повторного запроса:
@@ -191,7 +191,7 @@ class GigaChatApiClient(
 
     }
 
-    private suspend fun execReverseWordTool(text: JsonObject): String {
+    private suspend fun execCityInUpperCaseTool(text: JsonObject): String {
         val mcpClient = get<Client>(Client::class.java)
         println("✓ Successfully connected to MCP server")
 

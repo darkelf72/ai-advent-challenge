@@ -8,9 +8,13 @@ set -e
 
 # Константы
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-LOG_FILE="$SCRIPT_DIR/stop_services.log"
+LOG_DIR="$(cd "$SCRIPT_DIR/.." && pwd)/logs"
+LOG_FILE="$LOG_DIR/stop_services.log"
 APP_PORT=9999
 MCP_PORT=8082
+
+# Создаем директорию для логов, если её нет
+mkdir -p "$LOG_DIR"
 
 # Функция для логирования
 log() {

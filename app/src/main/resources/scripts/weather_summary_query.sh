@@ -1,5 +1,7 @@
 #!/bin/bash
-# Скрипт для запроса погоды в крупнейших городах России
+
+# Скрипт для запроса сводной информации из таблицы weather за последние 30 минут
+# Проверяет запуск сервисов, запрашивает данные и показывает уведомление
 # Автор: AI Assistant
 # Дата: 2025-12-18
 
@@ -7,47 +9,18 @@ set -e
 
 # Константы
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-PROJECT_ROOT="$(cd "$SCRIPT_DIR/../../../../.." && pwd)"
+PROJECT_ROOT="$(cd "$SCRIPT_DIR/../../../.." && pwd)"
 LOG_DIR="$(cd "$SCRIPT_DIR/.." && pwd)/logs"
-LOG_FILE="$LOG_DIR/weather_monitoring.log"
-DB_FILE="$PROJECT_ROOT/mcp-server/mcp_data.db"
+LOG_FILE="$LOG_DIR/weather_summary_query.log"
 APP_PORT=9999
 MCP_PORT=8082
 
 # Создаем директорию для логов, если её нет
 mkdir -p "$LOG_DIR"
 
-# Города (используем обычные массивы с одинаковыми индексами)
-CITY_NAMES=("Москва" "Санкт-Петербург" "Новосибирск" "Екатеринбург" "Казань" "Нижний Новгород")
-CITY_LATITUDES=(55.7558 59.9311 55.0084 56.8389 55.8304 56.2965)
-CITY_LONGITUDES=(37.6173 30.3609 82.9357 60.6057 49.0661 43.9361)
-
 # Функция для логирования
 log() {
     echo "[$(date '+%Y-%m-%d %H:%M:%S')] $1" | tee -a "$LOG_FILE"
-}
-
-# Функция для сохранения данных в базу данных
-save_to_db() {
-    local content="$1"
-
-    # Экранируем одинарные кавычки в content
-    local escaped_content="${content//\'/\'\'}"
-
-    # Вставляем данные в таблицу weather
-    # Используем set +e временно, чтобы не прерывать скрипт при ошибке
-    set +e
-    local error_output=$(sqlite3 "$DB_FILE" "INSERT INTO weather (content, createdAt) VALUES ('$escaped_content', datetime('now'));" 2>&1)
-    local exit_code=$?
-    set -e
-
-    if [ $exit_code -eq 0 ]; then
-        log "Данные успешно сохранены в базу данных"
-    else
-        log "ОШИБКА: Не удалось сохранить данные в базу данных. Код ошибки: $exit_code"
-        log "Детали ошибки: $error_output"
-        log "Путь к БД: $DB_FILE"
-    fi
 }
 
 # Функция для проверки, запущен ли процесс на порту
@@ -114,34 +87,55 @@ start_app() {
     fi
 }
 
-# Функция для запроса погоды
-request_weather() {
-    local city_name=$1
-    local latitude=$2
-    local longitude=$3
+# Функция для показа macOS уведомления
+show_notification() {
+    local title="$1"
+    local message="$2"
 
-    log "Запрос погоды для города: $city_name (lat: $latitude, lon: $longitude)"
+    osascript -e "display notification \"$message\" with title \"$title\" sound name \"default\""
+}
 
-    local message="Какая сейчас погода в городе $city_name?"
+# Функция для запроса сводной информации из БД
+request_summary() {
+    log "Запрос сводной информации из таблицы weather за последние 30 минут..."
+
+    local message="Дай мне сводную информацию из таблицы weather. Не запрашивай у меня доп.информацию - просто предоставь данные так, как посчтиаешь нужным."
 
     local response=$(curl -s -X POST "http://localhost:$APP_PORT/api/send" \
         -H "Content-Type: application/json" \
         -d "{\"message\": \"$message\"}" 2>&1)
 
     if [ $? -eq 0 ]; then
-        log "Ответ для $city_name: $response"
-        # Сохраняем ответ в базу данных
-        save_to_db "$response"
-        echo ""  >> "$LOG_FILE"
+        log "Успешно получен ответ от приложения"
+        log "=================================================="
+        log "ОТВЕТ ОТ ПРИЛОЖЕНИЯ:"
+        log "$response"
+        log "=================================================="
+
+        # Извлекаем только текст ответа из JSON (если возможно)
+        local answer=$(echo "$response" | grep -o '"answer":"[^"]*"' | sed 's/"answer":"//;s/"$//' | sed 's/\\n/ /g' | sed 's/\\//g' || echo "$response")
+
+        # Показываем уведомление (ограничиваем длину для читаемости)
+        local notification_text="${answer:0:200}"
+        if [ ${#answer} -gt 200 ]; then
+            notification_text="${notification_text}..."
+        fi
+
+        show_notification "Сводка по погоде" "$notification_text"
+
+        log "Уведомление отправлено пользователю"
+        return 0
     else
-        log "ОШИБКА при запросе погоды для $city_name: $response"
+        log "ОШИБКА при запросе сводной информации: $response"
+        show_notification "Ошибка" "Не удалось получить сводную информацию по погоде"
+        return 1
     fi
 }
 
 # Основная функция
 main() {
     log "=================================================="
-    log "Запуск скрипта получения погоды"
+    log "Запуск скрипта запроса сводной информации по погоде"
     log "=================================================="
 
     # Проверяем и запускаем MCP сервер
@@ -149,6 +143,7 @@ main() {
         log "MCP сервер не запущен"
         if ! start_mcp_server; then
             log "КРИТИЧЕСКАЯ ОШИБКА: Не удалось запустить MCP сервер"
+            show_notification "Ошибка запуска" "Не удалось запустить MCP сервер"
             exit 1
         fi
     else
@@ -160,29 +155,28 @@ main() {
         log "Приложение app не запущено"
         if ! start_app; then
             log "КРИТИЧЕСКАЯ ОШИБКА: Не удалось запустить приложение app"
+            show_notification "Ошибка запуска" "Не удалось запустить приложение app"
             exit 1
         fi
     else
         log "Приложение app уже запущено"
     fi
 
-    log "Все сервисы запущены. Начинаем запрос погоды..."
+    log "Все сервисы запущены. Выполняем запрос сводной информации..."
     log ""
 
-    log "--------------------------------------------------"
-    log "Запрос погоды по всем городам"
-    log "--------------------------------------------------"
-
-    # Запрашиваем погоду для каждого города
-    local total_cities=${#CITY_NAMES[@]}
-    for ((i=0; i<$total_cities; i++)); do
-        request_weather "${CITY_NAMES[$i]}" "${CITY_LATITUDES[$i]}" "${CITY_LONGITUDES[$i]}"
-        sleep 2  # Небольшая пауза между запросами к одному и тому же серверу
-    done
-
-    log "=================================================="
-    log "Запрос погоды завершен по всем городам"
-    log "=================================================="
+    # Запрашиваем сводную информацию
+    if request_summary; then
+        log "=================================================="
+        log "Скрипт успешно завершен"
+        log "=================================================="
+        exit 0
+    else
+        log "=================================================="
+        log "Скрипт завершен с ошибкой"
+        log "=================================================="
+        exit 1
+    fi
 }
 
 # Обработка сигналов для корректного завершения

@@ -214,6 +214,61 @@ class GigaChatApiClient(
                         )
                     }
                 }
+
+                "get_data_from_db" -> {
+                    return try {
+                        logger.info("Executing function call: ${functionCall.name}")
+                        // Выполняем функцию и получаем результат
+                        val functionResult = execGetDataFromDbTool(functionCall.arguments!!)
+                        logger.info("Function result: $functionResult")
+
+                        // Создаем список сообщений для повторного запроса
+                        val messagesWithFunctionResult = listOf(systemMessage) +
+                            historyMessages +
+                            body.choices.first().message + // сообщение с function_call
+                            GigaChatMessage(
+                                role = "function",
+                                content = functionResult,
+                                name = "get_data_from_db"
+                            )
+
+                        // Создаем новый запрос с результатом функции
+                        val secondRequest = GigaChatRequest(
+                            model = "GigaChat",
+                            messages = messagesWithFunctionResult,
+                            temperature = context.temperature,
+                            max_tokens = context.maxTokens,
+                            functions = getTools()
+                        )
+
+                        println("Sending POST request to: $BASE_URL\n$secondRequest")
+                        val secondResponse: HttpResponse = httpClient.post(BASE_URL) {
+                            header(HttpHeaders.Authorization, "Bearer $token")
+                            header(HttpHeaders.ContentType, "application/json")
+                            setBody(secondRequest)
+                        }
+
+                        println("Second request status: ${secondResponse.status}")
+                        val finalBody = secondResponse.body<GigaChatResponse>()
+                        println("Final response: $finalBody")
+
+                        // Возвращаем финальный ответ
+                        StandardApiResponse(
+                            answer = finalBody.choices.first().message.content,
+                            promptTokens = body.usage.prompt_tokens + finalBody.usage.prompt_tokens,
+                            completionTokens = body.usage.completion_tokens + finalBody.usage.completion_tokens,
+                            totalTokens = body.usage.total_tokens + finalBody.usage.total_tokens
+                        )
+                    } catch (e: Exception) {
+                        logger.error("Error executing get_data_from_db function call", e)
+                        StandardApiResponse(
+                            answer = "Произошла ошибка при получении данных из базы данных: ${e.message}",
+                            promptTokens = body.usage.prompt_tokens,
+                            completionTokens = body.usage.completion_tokens,
+                            totalTokens = body.usage.total_tokens
+                        )
+                    }
+                }
             }
         }
 
@@ -283,6 +338,30 @@ class GigaChatApiClient(
             """{"weather_data": "${weatherData.replace("\"", "\\\"").replace("\n", "\\n")}"}"""
         } catch (e: Exception) {
             logger.error("Error calling MCP server for weather_in_city", e)
+            """{"error": "Ошибка при вызове MCP сервера: ${e.message}"}"""
+        }
+    }
+
+    private suspend fun execGetDataFromDbTool(arguments: JsonObject): String {
+        return try {
+            val mcpClient = get<Client>(Client::class.java)
+            logger.info("Calling MCP server for get_data_from_db with arguments: $arguments")
+
+            val request = CallToolRequest(CallToolRequestParams("get_data_from_db", arguments))
+            val result = mcpClient.callTool(request)
+
+            // Извлекаем text из первого TextContent в result.content
+            val dbData = when (val firstContent = result.content.firstOrNull()) {
+                is TextContent -> firstContent.text
+                else -> "[]"
+            }
+
+            logger.info("Database data received from MCP server: $dbData")
+
+            // Возвращаем результат как есть (уже JSON)
+            dbData
+        } catch (e: Exception) {
+            logger.error("Error calling MCP server for get_data_from_db", e)
             """{"error": "Ошибка при вызове MCP сервера: ${e.message}"}"""
         }
     }

@@ -11,6 +11,9 @@ import kotlinx.serialization.json.Json
 const val MCP_SERVER_PORT = 8082
 
 fun main() {
+    // Инициализируем базу данных перед запуском сервера
+    DatabaseManager.init()
+
     embeddedServer(
         factory = Netty,
         configure = {

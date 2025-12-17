@@ -1,0 +1,19 @@
+# Build directories
+build/
+.gradle/
+out/
+
+# Log files
+*.log
+app/src/main/resources/logs/*.log
+
+# Database files
+*.db
+*.db-journal
+
+# IDE files
+.idea/
+*.iml
+
+# OS files
+.DS_Store

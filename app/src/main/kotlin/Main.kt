@@ -1,7 +1,6 @@
 import controllers.ChatController
 import controllers.ClientController
 import controllers.ConfigController
-import controllers.McpController
 import database.DatabaseManager
 import di.appModule
 import io.ktor.http.*
@@ -17,7 +16,6 @@ import io.ktor.server.routing.*
 import io.modelcontextprotocol.kotlin.sdk.client.Client
 import io.modelcontextprotocol.kotlin.sdk.client.SseClientTransport
 import kotlinx.coroutines.runBlocking
-import mcp.McpClient
 import org.koin.core.context.startKoin
 import org.koin.core.qualifier.named
 import org.koin.java.KoinJavaComponent.get
@@ -33,33 +31,30 @@ fun main() {
         modules(appModule)
     }
 
-    val mcpClient1 = get<Client>(Client::class.java)
+    val mcpClient = get<Client>(Client::class.java)
     val sseClientTransport = get<SseClientTransport>(SseClientTransport::class.java)
-    runBlocking { mcpClient1.connect(sseClientTransport) }
+    runBlocking { mcpClient.connect(sseClientTransport) }
 
     // Get dependencies from Koin
     val availableClients = get<Map<String, ApiClientInterface>>(Map::class.java, named("availableClients"))
     val summarizeApiClient = get<ApiClientInterface>(ApiClientInterface::class.java, named("summarizeApiClient"))
     val summarizationService = get<SummarizationService>(SummarizationService::class.java)
-    val mcpClient = get<McpClient>(McpClient::class.java)
 
     // Initialize controllers
     val clientController = ClientController(availableClients)
     val chatController = ChatController(clientController)
     val configController = ConfigController(clientController, summarizationService)
-    val mcpController = McpController(mcpClient)
 
     // Start server
     embeddedServer(Netty, port = 9999, host = "0.0.0.0") {
-        configureServer(clientController, chatController, configController, mcpController)
+        configureServer(clientController, chatController, configController)
     }.start(wait = true)
 }
 
 fun Application.configureServer(
     clientController: ClientController,
     chatController: ChatController,
-    configController: ConfigController,
-    mcpController: McpController
+    configController: ConfigController
 ) {
     install(ContentNegotiation) { json() }
     install(CORS) {
@@ -96,8 +91,5 @@ fun Application.configureServer(
         get("/api/current-client") { clientController.handleGetCurrentClient(call) }
         get("/api/available-clients") { clientController.handleGetAvailableClients(call) }
         post("/api/switch-client") { clientController.handleSwitchClient(call) }
-
-        // MCP endpoints
-        get("/api/mcp-tools") { mcpController.handleGetMcpTools(call) }
     }
 }

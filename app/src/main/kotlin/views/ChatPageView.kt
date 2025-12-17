@@ -34,11 +34,11 @@ fun HTML.chatPage() {
                             id = "clientSelector"
                             option {
                                 value = "YandexGPT Pro 5.1"
-                                selected = true
                                 +"YandexGPT Pro 5.1"
                             }
                             option {
                                 value = "GigaChat 2 Lite"
+                                selected = true
                                 +"GigaChat 2 Lite"
                             }
                         }

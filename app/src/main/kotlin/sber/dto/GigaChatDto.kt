@@ -9,7 +9,8 @@ data class GigaChatMessage(
     val role: String,
     val content: String,
     val function_call: FunctionCall? = null,
-    val functions_state_id: String? = null
+    val functions_state_id: String? = null,
+    val name: String? = null
 )
 
 @Serializable

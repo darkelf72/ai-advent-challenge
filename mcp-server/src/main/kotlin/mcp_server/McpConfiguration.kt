@@ -21,7 +21,7 @@ fun Application.configureMcpServer() {
         mcp {
             Server(
                 serverInfo = Implementation(
-                    name = "reverse-string-mcp-server",
+                    name = "uppercase-city-mcp-server",
                     version = "1.0.0"
                 ),
                 options = ServerOptions(
@@ -31,30 +31,31 @@ fun Application.configureMcpServer() {
                 )
             ).apply {
                 addTool(
-                    name = "reverse",
-                    description = "Reverses the input string",
+                    name = "city_in_uppercase",
+                    description = "Возвращает названия городов в верхнем регистре",
                     inputSchema = ToolSchema(
                         buildJsonObject {
                             put("type", "object")
                             putJsonObject("properties") {
-                                putJsonObject("text") {
+                                putJsonObject("city") {
                                     put("type", "string")
+                                    put("description", "Название города")
                                 }
                             }
                             putJsonArray("required") {
-                                add(JsonPrimitive("text"))
+                                add(JsonPrimitive("city"))
                             }
                         }
                     )
                 ) { arguments: CallToolRequest ->
                     val text = arguments.arguments
-                        ?.get("text")
+                        ?.get("city")
                         ?.jsonPrimitive
                         ?.content
                         ?: ""
 
                     CallToolResult(
-                        content = listOf(TextContent(text.reversed()))
+                        content = listOf(TextContent(text.uppercase()))
                     )
                 }
             }

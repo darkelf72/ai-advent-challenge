@@ -12,9 +12,9 @@ import io.ktor.client.request.*
 import io.ktor.client.statement.*
 import io.ktor.http.*
 import io.modelcontextprotocol.kotlin.sdk.client.Client
-import io.modelcontextprotocol.kotlin.sdk.client.SseClientTransport
 import io.modelcontextprotocol.kotlin.sdk.types.CallToolRequest
 import io.modelcontextprotocol.kotlin.sdk.types.CallToolRequestParams
+import io.modelcontextprotocol.kotlin.sdk.types.TextContent
 import kotlinx.serialization.json.JsonObject
 import org.koin.java.KoinJavaComponent.get
 import org.slf4j.LoggerFactory
@@ -109,10 +109,53 @@ class GigaChatApiClient(
         val body = response.body<GigaChatResponse>()
         println(body)
 
+        // Обработка function_call
         if (body.choices.first().finish_reason == "function_call") {
-            if (body.choices.first().message.function_call?.name == "reverse") {
-                val result = execReverseTool(body.choices.first().message.function_call!!.arguments!!)
+            val functionCall = body.choices.first().message.function_call
+            if (functionCall?.name == "city_in_uppercase") {
+                logger.info("Executing function call: ${functionCall.name}")
+                // Выполняем функцию и получаем результат
+                val functionResult = execReverseWordTool(functionCall.arguments!!)
+                logger.info("Function result: $functionResult")
 
+                // Создаем список сообщений для повторного запроса:
+                // система + история + сообщение с function_call + результат функции
+                val messagesWithFunctionResult = listOf(systemMessage) +
+                    historyMessages +
+                    body.choices.first().message + // сообщение с function_call
+                    GigaChatMessage(
+                        role = "function",
+                        content = "{\"city\": \"$functionResult\"}",
+                        name = "city_in_uppercase"
+                    )
+
+                // Создаем новый запрос с результатом функции
+                val secondRequest = GigaChatRequest(
+                    model = "GigaChat",
+                    messages = messagesWithFunctionResult,
+                    temperature = context.temperature,
+                    max_tokens = context.maxTokens,
+                    functions = getTools()
+                )
+
+                println("Sending POST request to: $BASE_URL\n$secondRequest")
+                val secondResponse: HttpResponse = httpClient.post(BASE_URL) {
+                    header(HttpHeaders.Authorization, "Bearer $token")
+                    header(HttpHeaders.ContentType, "application/json")
+                    setBody(secondRequest)
+                }
+
+                println("Second request status: ${secondResponse.status}")
+                val finalBody = secondResponse.body<GigaChatResponse>()
+                println("Final response: $finalBody")
+
+                // Возвращаем финальный ответ
+                return StandardApiResponse(
+                    answer = finalBody.choices.first().message.content,
+                    promptTokens = body.usage.prompt_tokens + finalBody.usage.prompt_tokens,
+                    completionTokens = body.usage.completion_tokens + finalBody.usage.completion_tokens,
+                    totalTokens = body.usage.total_tokens + finalBody.usage.total_tokens
+                )
             }
         }
 
@@ -136,16 +179,8 @@ class GigaChatApiClient(
 
     private suspend fun getTools(): List<Tool> {
         val mcpClient = get<Client>(Client::class.java)
-        val sseClientTransport = get<SseClientTransport>(SseClientTransport::class.java)
-
-        // Connect to server
-
-        println("✓ Successfully connected to MCP server")
-
-        // Request list of available tools
         val toolsResponse = mcpClient.listTools()
         val tools = toolsResponse.tools
-//        mcpClient.close()
         return tools.map {
             Tool(
                 name = it.name,
@@ -156,17 +191,17 @@ class GigaChatApiClient(
 
     }
 
-    private suspend fun execReverseTool(text: JsonObject): JsonObject? {
+    private suspend fun execReverseWordTool(text: JsonObject): String {
         val mcpClient = get<Client>(Client::class.java)
-//        val sseClientTransport = get<SseClientTransport>(SseClientTransport::class.java)
-
-        // Connect to server
-//        mcpClient.connect(sseClientTransport)
         println("✓ Successfully connected to MCP server")
 
-        val request = CallToolRequest(CallToolRequestParams("reverse", text))
+        val request = CallToolRequest(CallToolRequestParams("city_in_uppercase", text))
         val result = mcpClient.callTool(request)
 
-        return result.structuredContent
+        // Извлекаем text из первого TextContent в result.content
+        return when (val firstContent = result.content.firstOrNull()) {
+            is TextContent -> firstContent.text
+            else -> ""
+        }
     }
 }

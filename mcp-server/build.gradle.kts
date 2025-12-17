@@ -36,7 +36,7 @@ kotlin {
 }
 
 application {
-    mainClass.set("ApplicationKt")
+    mainClass.set("mcp_server.ApplicationKt")
 }
 
 tasks.named<JavaExec>("run") {

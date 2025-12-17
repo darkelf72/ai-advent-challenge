@@ -112,50 +112,108 @@ class GigaChatApiClient(
         // Обработка function_call
         if (body.choices.first().finish_reason == "function_call") {
             val functionCall = body.choices.first().message.function_call
-            if (functionCall?.name == "city_in_uppercase") {
-                logger.info("Executing function call: ${functionCall.name}")
-                // Выполняем функцию и получаем результат
-                val functionResult = execCityInUpperCaseTool(functionCall.arguments!!)
-                logger.info("Function result: $functionResult")
 
-                // Создаем список сообщений для повторного запроса:
-                // система + история + сообщение с function_call + результат функции
-                val messagesWithFunctionResult = listOf(systemMessage) +
-                    historyMessages +
-                    body.choices.first().message + // сообщение с function_call
-                    GigaChatMessage(
-                        role = "function",
-                        content = "{\"city\": \"$functionResult\"}",
-                        name = "city_in_uppercase"
+            when (functionCall?.name) {
+                "city_in_uppercase" -> {
+                    logger.info("Executing function call: ${functionCall.name}")
+                    // Выполняем функцию и получаем результат
+                    val functionResult = execCityInUpperCaseTool(functionCall.arguments!!)
+                    logger.info("Function result: $functionResult")
+
+                    // Создаем список сообщений для повторного запроса:
+                    // система + история + сообщение с function_call + результат функции
+                    val messagesWithFunctionResult = listOf(systemMessage) +
+                        historyMessages +
+                        body.choices.first().message + // сообщение с function_call
+                        GigaChatMessage(
+                            role = "function",
+                            content = "{\"city\": \"$functionResult\"}",
+                            name = "city_in_uppercase"
+                        )
+
+                    // Создаем новый запрос с результатом функции
+                    val secondRequest = GigaChatRequest(
+                        model = "GigaChat",
+                        messages = messagesWithFunctionResult,
+                        temperature = context.temperature,
+                        max_tokens = context.maxTokens,
+                        functions = getTools()
                     )
 
-                // Создаем новый запрос с результатом функции
-                val secondRequest = GigaChatRequest(
-                    model = "GigaChat",
-                    messages = messagesWithFunctionResult,
-                    temperature = context.temperature,
-                    max_tokens = context.maxTokens,
-                    functions = getTools()
-                )
+                    println("Sending POST request to: $BASE_URL\n$secondRequest")
+                    val secondResponse: HttpResponse = httpClient.post(BASE_URL) {
+                        header(HttpHeaders.Authorization, "Bearer $token")
+                        header(HttpHeaders.ContentType, "application/json")
+                        setBody(secondRequest)
+                    }
 
-                println("Sending POST request to: $BASE_URL\n$secondRequest")
-                val secondResponse: HttpResponse = httpClient.post(BASE_URL) {
-                    header(HttpHeaders.Authorization, "Bearer $token")
-                    header(HttpHeaders.ContentType, "application/json")
-                    setBody(secondRequest)
+                    println("Second request status: ${secondResponse.status}")
+                    val finalBody = secondResponse.body<GigaChatResponse>()
+                    println("Final response: $finalBody")
+
+                    // Возвращаем финальный ответ
+                    return StandardApiResponse(
+                        answer = finalBody.choices.first().message.content,
+                        promptTokens = body.usage.prompt_tokens + finalBody.usage.prompt_tokens,
+                        completionTokens = body.usage.completion_tokens + finalBody.usage.completion_tokens,
+                        totalTokens = body.usage.total_tokens + finalBody.usage.total_tokens
+                    )
                 }
 
-                println("Second request status: ${secondResponse.status}")
-                val finalBody = secondResponse.body<GigaChatResponse>()
-                println("Final response: $finalBody")
+                "weather_in_city" -> {
+                    return try {
+                        logger.info("Executing function call: ${functionCall.name}")
+                        // Выполняем функцию и получаем результат
+                        val functionResult = execWeatherInCityTool(functionCall.arguments!!)
+                        logger.info("Function result: $functionResult")
 
-                // Возвращаем финальный ответ
-                return StandardApiResponse(
-                    answer = finalBody.choices.first().message.content,
-                    promptTokens = body.usage.prompt_tokens + finalBody.usage.prompt_tokens,
-                    completionTokens = body.usage.completion_tokens + finalBody.usage.completion_tokens,
-                    totalTokens = body.usage.total_tokens + finalBody.usage.total_tokens
-                )
+                        // Создаем список сообщений для повторного запроса
+                        val messagesWithFunctionResult = listOf(systemMessage) +
+                            historyMessages +
+                            body.choices.first().message + // сообщение с function_call
+                            GigaChatMessage(
+                                role = "function",
+                                content = functionResult,
+                                name = "weather_in_city"
+                            )
+
+                        // Создаем новый запрос с результатом функции
+                        val secondRequest = GigaChatRequest(
+                            model = "GigaChat",
+                            messages = messagesWithFunctionResult,
+                            temperature = context.temperature,
+                            max_tokens = context.maxTokens,
+                            functions = getTools()
+                        )
+
+                        println("Sending POST request to: $BASE_URL\n$secondRequest")
+                        val secondResponse: HttpResponse = httpClient.post(BASE_URL) {
+                            header(HttpHeaders.Authorization, "Bearer $token")
+                            header(HttpHeaders.ContentType, "application/json")
+                            setBody(secondRequest)
+                        }
+
+                        println("Second request status: ${secondResponse.status}")
+                        val finalBody = secondResponse.body<GigaChatResponse>()
+                        println("Final response: $finalBody")
+
+                        // Возвращаем финальный ответ
+                        StandardApiResponse(
+                            answer = finalBody.choices.first().message.content,
+                            promptTokens = body.usage.prompt_tokens + finalBody.usage.prompt_tokens,
+                            completionTokens = body.usage.completion_tokens + finalBody.usage.completion_tokens,
+                            totalTokens = body.usage.total_tokens + finalBody.usage.total_tokens
+                        )
+                    } catch (e: Exception) {
+                        logger.error("Error executing weather_in_city function call", e)
+                        StandardApiResponse(
+                            answer = "Произошла ошибка при получении погоды: ${e.message}",
+                            promptTokens = body.usage.prompt_tokens,
+                            completionTokens = body.usage.completion_tokens,
+                            totalTokens = body.usage.total_tokens
+                        )
+                    }
+                }
             }
         }
 
@@ -202,6 +260,30 @@ class GigaChatApiClient(
         return when (val firstContent = result.content.firstOrNull()) {
             is TextContent -> firstContent.text
             else -> ""
+        }
+    }
+
+    private suspend fun execWeatherInCityTool(arguments: JsonObject): String {
+        return try {
+            val mcpClient = get<Client>(Client::class.java)
+            logger.info("Calling MCP server for weather_in_city with arguments: $arguments")
+
+            val request = CallToolRequest(CallToolRequestParams("weather_in_city", arguments))
+            val result = mcpClient.callTool(request)
+
+            // Извлекаем text из первого TextContent в result.content
+            val weatherData = when (val firstContent = result.content.firstOrNull()) {
+                is TextContent -> firstContent.text
+                else -> "Нет данных о погоде"
+            }
+
+            logger.info("Weather data received from MCP server: $weatherData")
+
+            // Возвращаем результат как JSON строку
+            """{"weather_data": "${weatherData.replace("\"", "\\\"").replace("\n", "\\n")}"}"""
+        } catch (e: Exception) {
+            logger.error("Error calling MCP server for weather_in_city", e)
+            """{"error": "Ошибка при вызове MCP сервера: ${e.message}"}"""
         }
     }
 }

@@ -1,3 +1,5 @@
+package mcp_server
+
 import io.ktor.serialization.kotlinx.json.*
 import io.ktor.server.application.*
 import io.ktor.server.engine.*

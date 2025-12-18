@@ -45,3 +45,6 @@ bin/
 .DS_Store
 
 truststore.jks
+*.db
+*.log
+.idea

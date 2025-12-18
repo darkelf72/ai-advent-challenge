@@ -3,13 +3,8 @@ package apiclients.gigachat
 import apiclients.BaseApiClient
 import apiclients.RequestContext
 import apiclients.StandardApiResponse
-import apiclients.gigachat.dto.FunctionCall
-import apiclients.gigachat.dto.GigaChatMessage
-import apiclients.gigachat.dto.GigaChatRequest
-import apiclients.gigachat.dto.GigaChatResponse
-import apiclients.gigachat.dto.OAuthTokenResponse
-import apiclients.gigachat.dto.Tool
 import apiclients.config.ApiClientConfig
+import apiclients.gigachat.dto.*
 import database.repository.ClientConfigRepository
 import database.repository.MessageHistoryRepository
 import io.ktor.client.*
@@ -17,13 +12,7 @@ import io.ktor.client.call.*
 import io.ktor.client.request.*
 import io.ktor.client.statement.*
 import io.ktor.http.*
-import io.modelcontextprotocol.kotlin.sdk.client.Client
-import io.modelcontextprotocol.kotlin.sdk.types.CallToolRequest
-import io.modelcontextprotocol.kotlin.sdk.types.CallToolRequestParams
-import io.modelcontextprotocol.kotlin.sdk.types.TextContent
-import kotlinx.serialization.json.JsonObject
-import org.koin.core.qualifier.named
-import org.koin.java.KoinJavaComponent.get
+import mcp.ToolRegistry
 import org.slf4j.LoggerFactory
 import java.math.BigDecimal
 import java.math.RoundingMode
@@ -39,7 +28,8 @@ class GigaChatApiClient(
     apiClientConfig: ApiClientConfig,
     clientName: String,
     configRepository: ClientConfigRepository,
-    messageHistoryRepository: MessageHistoryRepository
+    messageHistoryRepository: MessageHistoryRepository,
+    private val toolRegistry: ToolRegistry
 ) : BaseApiClient(httpClient, apiClientConfig, clientName, configRepository, messageHistoryRepository) {
 
     private val logger = LoggerFactory.getLogger(GigaChatApiClient::class.java)
@@ -103,6 +93,7 @@ class GigaChatApiClient(
             var totalTokensCount = 0
             val maxIterations = 10 // Защита от бесконечного цикла
             var iteration = 0
+            val functions = getTools()
 
             while (iteration < maxIterations) {
                 iteration++
@@ -113,7 +104,7 @@ class GigaChatApiClient(
                     messages = currentMessages,
                     temperature = context.temperature,
                     max_tokens = context.maxTokens,
-                    functions = getTools()
+                    functions = functions
                 )
 
                 val response = sendGigaChatRequest(token, request)
@@ -192,6 +183,15 @@ class GigaChatApiClient(
             }
 
             println("Status: ${response.status}")
+
+            // Если ошибка - выводим тело ответа для отладки
+            if (!response.status.isSuccess()) {
+                val errorBody = response.bodyAsText()
+                logger.error("GigaChat API error response: $errorBody")
+                println("ERROR RESPONSE BODY: $errorBody")
+                throw Exception("GigaChat API returned error ${response.status}: $errorBody")
+            }
+
             val body = response.body<GigaChatResponse>()
             println(body)
 
@@ -204,26 +204,24 @@ class GigaChatApiClient(
     }
 
     /**
-     * Обрабатывает function_call и возвращает результат выполнения
+     * Обрабатывает function_call и возвращает результат выполнения.
+     * Делегирует выполнение в ToolRegistry.
      */
     private suspend fun processFunctionCall(functionCall: FunctionCall): String {
         return try {
             logger.info("Executing function: ${functionCall.name}")
 
-            val result = when (functionCall.name) {
-                "weather_in_city" -> execWeatherInCityTool(functionCall.arguments!!)
-                "save_weather_to_db" -> execSaveWeatherToDbTool(functionCall.arguments!!)
-                else -> {
-                    logger.error("Unknown function call: ${functionCall.name}")
-                    """{"error": "Неизвестная функция: ${functionCall.name}"}"""
-                }
+            if (functionCall.arguments == null) {
+                logger.error("Function call ${functionCall.name} has no arguments")
+                return """{"error": "Аргументы функции не указаны", "status": "error"}"""
             }
 
+            val result = toolRegistry.executeTool(functionCall.name, functionCall.arguments)
             logger.info("Function ${functionCall.name} executed successfully")
             result
         } catch (e: Exception) {
             logger.error("Error processing function_call: ${functionCall.name}", e)
-            """{"error": "Ошибка при выполнении функции ${functionCall.name}: ${e.message}"}"""
+            """{"error": "Ошибка при выполнении функции ${functionCall.name}: ${e.message}", "status": "error"}"""
         }
     }
 
@@ -273,64 +271,17 @@ class GigaChatApiClient(
             .toDouble()
     }
 
-    private suspend fun getTools(): List<Tool> {
-        val dbMcpClient = get<Client>(Client::class.java, named("dbMcpClient"))
-        val httpMcpClient = get<Client>(Client::class.java, named("httpMcpClient"))
-        val tools = dbMcpClient.listTools().tools + httpMcpClient.listTools().tools
-        return tools.map {
+    /**
+     * Получает список доступных инструментов из ToolRegistry.
+     * Преобразует формат ToolExecutor в формат GigaChat Tool.
+     */
+    private fun getTools(): List<Tool> {
+        return toolRegistry.getAllTools().map { executor ->
             Tool(
-                name = it.name,
-                description = it.description!!,
-                parameters = it.inputSchema.properties
+                name = executor.toolName,
+                description = executor.description,
+                parameters = executor.parameters
             )
-        }
-    }
-
-    private suspend fun execWeatherInCityTool(arguments: JsonObject): String {
-        return try {
-            val mcpClient = get<Client>(Client::class.java, named("httpMcpClient"))
-            logger.info("Calling MCP server for weather_in_city with arguments: $arguments")
-
-            val request = CallToolRequest(CallToolRequestParams("weather_in_city", arguments))
-            val result = mcpClient.callTool(request)
-
-            // Извлекаем text из первого TextContent в result.content
-            val weatherData = when (val firstContent = result.content.firstOrNull()) {
-                is TextContent -> firstContent.text
-                else -> "Нет данных о погоде"
-            }
-
-            logger.info("Weather data received from MCP server: $weatherData")
-
-            // Возвращаем результат как JSON строку
-            """{"weather_data": "${weatherData.replace("\"", "\\\"").replace("\n", "\\n")}"}"""
-        } catch (e: Exception) {
-            logger.error("Error calling MCP server for weather_in_city", e)
-            """{"error": "Ошибка при вызове MCP сервера: ${e.message}"}"""
-        }
-    }
-
-    private suspend fun execSaveWeatherToDbTool(arguments: JsonObject): String {
-        return try {
-            val mcpClient = get<Client>(Client::class.java, named("dbMcpClient"))
-            logger.info("Calling MCP server for save_weather_to_db with arguments: $arguments")
-
-            val request = CallToolRequest(CallToolRequestParams("save_weather_to_db", arguments))
-            val result = mcpClient.callTool(request)
-
-            // Извлекаем text из первого TextContent в result.content
-            val saveResult = when (val firstContent = result.content.firstOrNull()) {
-                is TextContent -> firstContent.text
-                else -> """{"error": "No data returned", "status": "error"}"""
-            }
-
-            logger.info("Save weather result from MCP server: $saveResult")
-
-            // Возвращаем результат как есть (уже JSON)
-            saveResult
-        } catch (e: Exception) {
-            logger.error("Error calling MCP server for save_weather_to_db", e)
-            """{"error": "Ошибка при вызове MCP сервера: ${e.message}", "status": "error"}"""
         }
     }
 }

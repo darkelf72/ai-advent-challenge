@@ -2,6 +2,8 @@ package di
 
 import apiclients.ApiClientInterface
 import apiclients.config.apiClientConfig
+import apiclients.gigachat.GigaChatApiClient
+import apiclients.yandex.YandexApiClient
 import database.repository.ClientConfigRepository
 import database.repository.MessageHistoryRepository
 import io.ktor.client.*
@@ -11,14 +13,14 @@ import io.ktor.client.plugins.sse.*
 import io.ktor.serialization.kotlinx.json.*
 import io.modelcontextprotocol.kotlin.sdk.client.Client
 import io.modelcontextprotocol.kotlin.sdk.client.ClientOptions
-import io.modelcontextprotocol.kotlin.sdk.client.SseClientTransport
 import io.modelcontextprotocol.kotlin.sdk.types.Implementation
 import kotlinx.serialization.json.Json
+import mcp.ToolRegistry
+import mcp.tools.SaveWeatherToDbExecutor
+import mcp.tools.WeatherInCityExecutor
 import org.koin.core.qualifier.named
 import org.koin.dsl.module
-import apiclients.gigachat.GigaChatApiClient
 import service.SummarizationService
-import apiclients.yandex.YandexApiClient
 import java.security.KeyStore
 import javax.net.ssl.TrustManagerFactory
 import javax.net.ssl.X509TrustManager
@@ -48,14 +50,6 @@ val appModule = module {
                 version = "1.0.0"
             ),
             options = ClientOptions()
-        )
-    }
-
-    single<SseClientTransport> {
-        // Create HTTP client for SSE transport
-        SseClientTransport(
-            urlString = "http://localhost:8082",
-            client = get<HttpClient>(named("mcpHttpClient"))
         )
     }
 
@@ -151,7 +145,8 @@ val appModule = module {
             apiClientConfig = chatApiClientConfig,
             clientName = "gigachat",
             configRepository = get(),
-            messageHistoryRepository = get()
+            messageHistoryRepository = get(),
+            toolRegistry = get()
         )
     }
 
@@ -161,7 +156,31 @@ val appModule = module {
             apiClientConfig = summarizeApiClientConfig,
             clientName = "gigachat-summarize",
             configRepository = get(),
-            messageHistoryRepository = get()
+            messageHistoryRepository = get(),
+            toolRegistry = get()
+        )
+    }
+
+    // MCP Tool Executors
+    single<WeatherInCityExecutor> {
+        WeatherInCityExecutor(
+            mcpClient = get(named("httpMcpClient"))
+        )
+    }
+
+    single<SaveWeatherToDbExecutor> {
+        SaveWeatherToDbExecutor(
+            mcpClient = get(named("dbMcpClient"))
+        )
+    }
+
+    // Tool Registry
+    single<ToolRegistry> {
+        ToolRegistry(
+            executors = listOf(
+                get<WeatherInCityExecutor>(),
+                get<SaveWeatherToDbExecutor>()
+            )
         )
     }
 

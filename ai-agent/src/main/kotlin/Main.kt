@@ -18,6 +18,7 @@ import io.ktor.server.routing.*
 import io.modelcontextprotocol.kotlin.sdk.client.Client
 import io.modelcontextprotocol.kotlin.sdk.client.SseClientTransport
 import kotlinx.coroutines.runBlocking
+import mcp.ToolRegistry
 import org.koin.core.context.startKoin
 import org.koin.core.qualifier.named
 import org.koin.java.KoinJavaComponent.get
@@ -35,7 +36,10 @@ fun main() {
 
     val dbMcpClient = get<Client>(Client::class.java, named("dbMcpClient"))
     val httpMcpClient = get<Client>(Client::class.java, named("httpMcpClient"))
+    val toolRegistry = get<ToolRegistry>(ToolRegistry::class.java)
+
     runBlocking {
+        // Connect MCP clients
         dbMcpClient.connect(
             transport = SseClientTransport(
                 urlString = "http://localhost:8081",
@@ -48,11 +52,13 @@ fun main() {
                 client = get(HttpClient::class.java, named("mcpHttpClient"))
             )
         )
+
+        // Initialize ToolRegistry (loads and caches all tools)
+        toolRegistry.initialize()
     }
 
     // Get dependencies from Koin
     val availableClients = get<Map<String, ApiClientInterface>>(Map::class.java, named("availableClients"))
-    val summarizeApiClient = get<ApiClientInterface>(ApiClientInterface::class.java, named("summarizeApiClient"))
     val summarizationService = get<SummarizationService>(SummarizationService::class.java)
 
     // Initialize controllers

@@ -269,6 +269,61 @@ class GigaChatApiClient(
                         )
                     }
                 }
+
+                "save_weather_to_db" -> {
+                    return try {
+                        logger.info("Executing function call: ${functionCall.name}")
+                        // Выполняем функцию и получаем результат
+                        val functionResult = execSaveWeatherToDbTool(functionCall.arguments!!)
+                        logger.info("Function result: $functionResult")
+
+                        // Создаем список сообщений для повторного запроса
+                        val messagesWithFunctionResult = listOf(systemMessage) +
+                            historyMessages +
+                            body.choices.first().message + // сообщение с function_call
+                            GigaChatMessage(
+                                role = "function",
+                                content = functionResult,
+                                name = "save_weather_to_db"
+                            )
+
+                        // Создаем новый запрос с результатом функции
+                        val secondRequest = GigaChatRequest(
+                            model = "GigaChat",
+                            messages = messagesWithFunctionResult,
+                            temperature = context.temperature,
+                            max_tokens = context.maxTokens,
+                            functions = getTools()
+                        )
+
+                        println("Sending POST request to: $BASE_URL\n$secondRequest")
+                        val secondResponse: HttpResponse = httpClient.post(BASE_URL) {
+                            header(HttpHeaders.Authorization, "Bearer $token")
+                            header(HttpHeaders.ContentType, "application/json")
+                            setBody(secondRequest)
+                        }
+
+                        println("Second request status: ${secondResponse.status}")
+                        val finalBody = secondResponse.body<GigaChatResponse>()
+                        println("Final response: $finalBody")
+
+                        // Возвращаем финальный ответ
+                        StandardApiResponse(
+                            answer = finalBody.choices.first().message.content,
+                            promptTokens = body.usage.prompt_tokens + finalBody.usage.prompt_tokens,
+                            completionTokens = body.usage.completion_tokens + finalBody.usage.completion_tokens,
+                            totalTokens = body.usage.total_tokens + finalBody.usage.total_tokens
+                        )
+                    } catch (e: Exception) {
+                        logger.error("Error executing save_weather_to_db function call", e)
+                        StandardApiResponse(
+                            answer = "Произошла ошибка при сохранении данных о погоде: ${e.message}",
+                            promptTokens = body.usage.prompt_tokens,
+                            completionTokens = body.usage.completion_tokens,
+                            totalTokens = body.usage.total_tokens
+                        )
+                    }
+                }
             }
         }
 
@@ -363,6 +418,30 @@ class GigaChatApiClient(
         } catch (e: Exception) {
             logger.error("Error calling MCP server for get_data_from_db", e)
             """{"error": "Ошибка при вызове MCP сервера: ${e.message}"}"""
+        }
+    }
+
+    private suspend fun execSaveWeatherToDbTool(arguments: JsonObject): String {
+        return try {
+            val mcpClient = get<Client>(Client::class.java)
+            logger.info("Calling MCP server for save_weather_to_db with arguments: $arguments")
+
+            val request = CallToolRequest(CallToolRequestParams("save_weather_to_db", arguments))
+            val result = mcpClient.callTool(request)
+
+            // Извлекаем text из первого TextContent в result.content
+            val saveResult = when (val firstContent = result.content.firstOrNull()) {
+                is TextContent -> firstContent.text
+                else -> """{"error": "No data returned", "status": "error"}"""
+            }
+
+            logger.info("Save weather result from MCP server: $saveResult")
+
+            // Возвращаем результат как есть (уже JSON)
+            saveResult
+        } catch (e: Exception) {
+            logger.error("Error calling MCP server for save_weather_to_db", e)
+            """{"error": "Ошибка при вызове MCP сервера: ${e.message}", "status": "error"}"""
         }
     }
 }

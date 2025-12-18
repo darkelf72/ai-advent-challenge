@@ -5,4 +5,5 @@ plugins {
 rootProject.name = "ai-advent-challenge"
 
 include("app")
-include("mcp-server")
+include("http-mcp-server")
+include("db-mcp-server")

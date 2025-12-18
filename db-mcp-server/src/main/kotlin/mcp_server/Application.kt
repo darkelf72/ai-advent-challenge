@@ -8,7 +8,7 @@ import io.ktor.server.plugins.contentnegotiation.*
 import io.ktor.server.sse.*
 import kotlinx.serialization.json.Json
 
-const val MCP_SERVER_PORT = 8082
+const val MCP_SERVER_PORT = 8081
 
 fun main() {
     // Инициализируем базу данных перед запуском сервера

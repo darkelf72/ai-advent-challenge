@@ -19,21 +19,10 @@ dependencies {
     implementation("io.ktor:ktor-server-cors:3.0.2")
     implementation("io.ktor:ktor-server-sse-jvm:3.0.2")
 
-    // Exposed ORM
-    implementation("org.jetbrains.exposed:exposed-core:0.57.0")
-    implementation("org.jetbrains.exposed:exposed-dao:0.57.0")
-    implementation("org.jetbrains.exposed:exposed-jdbc:0.57.0")
-
     //
     implementation("io.modelcontextprotocol:kotlin-sdk:0.8.1")
     //
     implementation("ch.qos.logback:logback-classic:1.5.20")
-
-    // SQLite JDBC Driver
-    implementation("org.xerial:sqlite-jdbc:3.47.1.0")
-
-    // Flyway for Database Migrations
-    implementation("org.flywaydb:flyway-core:11.1.0")
 
     testImplementation(kotlin("test"))
 }
@@ -48,12 +37,4 @@ kotlin {
 
 application {
     mainClass.set("mcp_server.ApplicationKt")
-}
-
-tasks.named<JavaExec>("run") {
-    // Устанавливаем рабочую директорию в директорию модуля mcp-server
-    workingDir = projectDir
-
-    systemProperty("yandexApiKey", project.findProperty("yandexApiKey") as String? ?: "")
-    systemProperty("gigaChatApiKey", project.findProperty("gigaChatApiKey") as String? ?: "")
 }

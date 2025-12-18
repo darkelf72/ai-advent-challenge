@@ -15,7 +15,6 @@ import org.slf4j.LoggerFactory
  */
 fun Application.configureMcpServer() {
     val logger = LoggerFactory.getLogger("McpConfiguration")
-    val weatherService = WeatherService()
     val weatherDataService = WeatherDataService()
 
     routing {
@@ -37,59 +36,6 @@ fun Application.configureMcpServer() {
                     )
                 )
             ).apply {
-                addTool(
-                    name = "weather_in_city",
-                    description = "Возвращает текущую погоду для заданных координат города",
-                    inputSchema = ToolSchema(
-                        buildJsonObject {
-                            put("type", "object")
-                            putJsonObject("properties") {
-                                putJsonObject("latitude") {
-                                    put("type", "number")
-                                    put("description", "Широта города")
-                                }
-                                putJsonObject("longitude") {
-                                    put("type", "number")
-                                    put("description", "Долгота города")
-                                }
-                            }
-                            putJsonArray("required") {
-                                add(JsonPrimitive("latitude"))
-                                add(JsonPrimitive("longitude"))
-                            }
-                        }
-                    )
-                ) { arguments: CallToolRequest ->
-                    try {
-                        val latitude = arguments.arguments
-                            ?.get("latitude")
-                            ?.jsonPrimitive
-                            ?.content
-                            ?.toDoubleOrNull()
-                            ?: 0.0
-
-                        val longitude = arguments.arguments
-                            ?.get("longitude")
-                            ?.jsonPrimitive
-                            ?.content
-                            ?.toDoubleOrNull()
-                            ?: 0.0
-
-                        logger.info("Executing weather_in_city tool for lat: $latitude, lon: $longitude")
-
-                        val weatherResult = weatherService.getWeather(latitude, longitude)
-
-                        CallToolResult(
-                            content = listOf(TextContent(weatherResult))
-                        )
-                    } catch (e: Exception) {
-                        logger.error("Error executing weather_in_city tool", e)
-                        CallToolResult(
-                            content = listOf(TextContent("Ошибка при выполнении запроса погоды: ${e.message}"))
-                        )
-                    }
-                }
-
                 addTool(
                     name = "save_weather_to_db",
                     description = "Сохраняет детализированную информацию о погоде в базу данных weather_in_city",

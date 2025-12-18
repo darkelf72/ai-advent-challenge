@@ -1,3 +1,5 @@
+package mcp_server
+
 import org.flywaydb.core.Flyway
 import org.jetbrains.exposed.sql.Database
 import javax.sql.DataSource
@@ -13,21 +15,21 @@ object DatabaseManager {
     private lateinit var dataSource: DataSource
 
     fun init() {
-        // Проверяем существование БД
-        val dbFile = File(DB_PATH)
-        val dbExists = dbFile.exists()
-
-        if (!dbExists) {
-            println("Database file not found at: $DB_PATH")
-            println("Creating new database...")
-
-            // Создаем файл БД, установив соединение
-            DriverManager.getConnection(DB_URL).use { connection ->
-                println("Database file created successfully")
-            }
-        } else {
-            println("Database file found at: $DB_PATH")
-        }
+//        // Проверяем существование БД
+//        val dbFile = File(DB_PATH)
+//        val dbExists = dbFile.exists()
+//
+//        if (!dbExists) {
+//            println("Database file not found at: $DB_PATH")
+//            println("Creating new database...")
+//
+//            // Создаем файл БД, установив соединение
+//            DriverManager.getConnection(DB_URL).use { connection ->
+//                println("Database file created successfully")
+//            }
+//        } else {
+//            println("Database file found at: $DB_PATH")
+//        }
 
         // Create SQLite DataSource
         dataSource = SQLiteDataSource().apply {
@@ -52,8 +54,6 @@ object DatabaseManager {
         val migrationsApplied = flyway.migrate()
         println("Flyway migrations applied: ${migrationsApplied.migrationsExecuted}")
     }
-
-    fun getDataSource(): DataSource = dataSource
 
     fun getConnection(): Connection {
         return DriverManager.getConnection(DB_URL)

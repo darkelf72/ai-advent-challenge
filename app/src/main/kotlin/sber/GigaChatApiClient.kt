@@ -82,256 +82,178 @@ class GigaChatApiClient(
      * Выполняет запрос к GigaChat API
      */
     override suspend fun executeApiRequest(context: RequestContext): StandardApiResponse {
-        val token = getAccessToken()
+        try {
+            logger.info("Starting API request execution")
 
-        // Конвертируем ChatMessage в GigaChatMessage для GigaChat API
-        val systemMessage = GigaChatMessage(role = "system", content = context.systemPrompt)
-        val historyMessages = context.messageHistory.map { msg ->
-            GigaChatMessage(role = msg.role, content = msg.content)
-        }
+            val token = getAccessToken()
+            val systemMessage = GigaChatMessage(role = "system", content = context.systemPrompt)
+            val historyMessages = context.messageHistory.map { msg ->
+                GigaChatMessage(role = msg.role, content = msg.content)
+            }
 
-        val request = GigaChatRequest(
-            model = "GigaChat",
-            messages = listOf(systemMessage) + historyMessages,
-            temperature = context.temperature,
-            max_tokens = context.maxTokens,
-            functions = getTools()
-        )
+            var currentMessages = listOf(systemMessage) + historyMessages
+            var totalPromptTokens = 0
+            var totalCompletionTokens = 0
+            var totalTokensCount = 0
+            val maxIterations = 10 // Защита от бесконечного цикла
+            var iteration = 0
 
-        println("Sending POST request to: $BASE_URL\n$request")
-        val response: HttpResponse = httpClient.post(BASE_URL) {
-            header(HttpHeaders.Authorization, "Bearer $token")
-            header(HttpHeaders.ContentType, "application/json")
-            setBody(request)
-        }
+            while (iteration < maxIterations) {
+                iteration++
+                logger.info("Request iteration: $iteration")
 
-        println("Status: ${response.status}")
-        val body = response.body<GigaChatResponse>()
-        println(body)
+                val request = GigaChatRequest(
+                    model = "GigaChat",
+                    messages = currentMessages,
+                    temperature = context.temperature,
+                    max_tokens = context.maxTokens,
+                    functions = getTools()
+                )
 
-        // Обработка function_call
-        if (body.choices.first().finish_reason == "function_call") {
-            val functionCall = body.choices.first().message.function_call
+                val response = sendGigaChatRequest(token, request)
 
-            when (functionCall?.name) {
-                "city_in_uppercase" -> {
-                    logger.info("Executing function call: ${functionCall.name}")
-                    // Выполняем функцию и получаем результат
-                    val functionResult = execCityInUpperCaseTool(functionCall.arguments!!)
-                    logger.info("Function result: $functionResult")
+                // Накапливаем токены
+                totalPromptTokens += response.usage.prompt_tokens
+                totalCompletionTokens += response.usage.completion_tokens
+                totalTokensCount += response.usage.total_tokens
 
-                    // Создаем список сообщений для повторного запроса:
-                    // система + история + сообщение с function_call + результат функции
-                    val messagesWithFunctionResult = listOf(systemMessage) +
-                        historyMessages +
-                        body.choices.first().message + // сообщение с function_call
-                        GigaChatMessage(
-                            role = "function",
-                            content = "{\"city\": \"$functionResult\"}",
-                            name = "city_in_uppercase"
-                        )
+                val firstChoice = response.choices.firstOrNull()
+                if (firstChoice == null) {
+                    logger.error("No choices in API response")
+                    return createErrorResponse("API вернул пустой ответ", totalPromptTokens, totalCompletionTokens, totalTokensCount)
+                }
 
-                    // Создаем новый запрос с результатом функции
-                    val secondRequest = GigaChatRequest(
-                        model = "GigaChat",
-                        messages = messagesWithFunctionResult,
-                        temperature = context.temperature,
-                        max_tokens = context.maxTokens,
-                        functions = getTools()
-                    )
-
-                    println("Sending POST request to: $BASE_URL\n$secondRequest")
-                    val secondResponse: HttpResponse = httpClient.post(BASE_URL) {
-                        header(HttpHeaders.Authorization, "Bearer $token")
-                        header(HttpHeaders.ContentType, "application/json")
-                        setBody(secondRequest)
-                    }
-
-                    println("Second request status: ${secondResponse.status}")
-                    val finalBody = secondResponse.body<GigaChatResponse>()
-                    println("Final response: $finalBody")
-
-                    // Возвращаем финальный ответ
+                // Если нет function_call - возвращаем финальный ответ
+                if (firstChoice.finish_reason != "function_call") {
+                    logger.info("Received final response without function_call")
                     return StandardApiResponse(
-                        answer = finalBody.choices.first().message.content,
-                        promptTokens = body.usage.prompt_tokens + finalBody.usage.prompt_tokens,
-                        completionTokens = body.usage.completion_tokens + finalBody.usage.completion_tokens,
-                        totalTokens = body.usage.total_tokens + finalBody.usage.total_tokens
+                        answer = firstChoice.message.content,
+                        promptTokens = totalPromptTokens,
+                        completionTokens = totalCompletionTokens,
+                        totalTokens = totalTokensCount
                     )
                 }
 
-                "weather_in_city" -> {
-                    return try {
-                        logger.info("Executing function call: ${functionCall.name}")
-                        // Выполняем функцию и получаем результат
-                        val functionResult = execWeatherInCityTool(functionCall.arguments!!)
-                        logger.info("Function result: $functionResult")
-
-                        // Создаем список сообщений для повторного запроса
-                        val messagesWithFunctionResult = listOf(systemMessage) +
-                            historyMessages +
-                            body.choices.first().message + // сообщение с function_call
-                            GigaChatMessage(
-                                role = "function",
-                                content = functionResult,
-                                name = "weather_in_city"
-                            )
-
-                        // Создаем новый запрос с результатом функции
-                        val secondRequest = GigaChatRequest(
-                            model = "GigaChat",
-                            messages = messagesWithFunctionResult,
-                            temperature = context.temperature,
-                            max_tokens = context.maxTokens,
-                            functions = getTools()
-                        )
-
-                        println("Sending POST request to: $BASE_URL\n$secondRequest")
-                        val secondResponse: HttpResponse = httpClient.post(BASE_URL) {
-                            header(HttpHeaders.Authorization, "Bearer $token")
-                            header(HttpHeaders.ContentType, "application/json")
-                            setBody(secondRequest)
-                        }
-
-                        println("Second request status: ${secondResponse.status}")
-                        val finalBody = secondResponse.body<GigaChatResponse>()
-                        println("Final response: $finalBody")
-
-                        // Возвращаем финальный ответ
-                        StandardApiResponse(
-                            answer = finalBody.choices.first().message.content,
-                            promptTokens = body.usage.prompt_tokens + finalBody.usage.prompt_tokens,
-                            completionTokens = body.usage.completion_tokens + finalBody.usage.completion_tokens,
-                            totalTokens = body.usage.total_tokens + finalBody.usage.total_tokens
-                        )
-                    } catch (e: Exception) {
-                        logger.error("Error executing weather_in_city function call", e)
-                        StandardApiResponse(
-                            answer = "Произошла ошибка при получении погоды: ${e.message}",
-                            promptTokens = body.usage.prompt_tokens,
-                            completionTokens = body.usage.completion_tokens,
-                            totalTokens = body.usage.total_tokens
-                        )
-                    }
+                // Обрабатываем function_call
+                val functionCall = firstChoice.message.function_call
+                if (functionCall?.name == null || functionCall.arguments == null) {
+                    logger.error("Invalid function_call in response: $functionCall")
+                    return createErrorResponse(
+                        "Получен некорректный function_call",
+                        totalPromptTokens,
+                        totalCompletionTokens,
+                        totalTokensCount
+                    )
                 }
 
-                "get_data_from_db" -> {
-                    return try {
-                        logger.info("Executing function call: ${functionCall.name}")
-                        // Выполняем функцию и получаем результат
-                        val functionResult = execGetDataFromDbTool(functionCall.arguments!!)
-                        logger.info("Function result: $functionResult")
+                logger.info("Processing function_call: ${functionCall.name}")
+                val functionResult = processFunctionCall(functionCall)
 
-                        // Создаем список сообщений для повторного запроса
-                        val messagesWithFunctionResult = listOf(systemMessage) +
-                            historyMessages +
-                            body.choices.first().message + // сообщение с function_call
-                            GigaChatMessage(
-                                role = "function",
-                                content = functionResult,
-                                name = "get_data_from_db"
-                            )
+                // Формируем новый список сообщений с результатом функции
+                currentMessages = buildMessagesWithFunctionResult(
+                    previousMessages = currentMessages,
+                    assistantMessage = firstChoice.message,
+                    functionName = functionCall.name,
+                    functionResult = functionResult
+                )
+            }
 
-                        // Создаем новый запрос с результатом функции
-                        val secondRequest = GigaChatRequest(
-                            model = "GigaChat",
-                            messages = messagesWithFunctionResult,
-                            temperature = context.temperature,
-                            max_tokens = context.maxTokens,
-                            functions = getTools()
-                        )
+            logger.error("Maximum iterations ($maxIterations) reached")
+            return createErrorResponse(
+                "Превышено максимальное количество итераций обработки function_call",
+                totalPromptTokens,
+                totalCompletionTokens,
+                totalTokensCount
+            )
+        } catch (e: Exception) {
+            logger.error("Error executing API request", e)
+            return createErrorResponse("Произошла ошибка при выполнении запроса: ${e.message}", 0, 0, 0)
+        }
+    }
 
-                        println("Sending POST request to: $BASE_URL\n$secondRequest")
-                        val secondResponse: HttpResponse = httpClient.post(BASE_URL) {
-                            header(HttpHeaders.Authorization, "Bearer $token")
-                            header(HttpHeaders.ContentType, "application/json")
-                            setBody(secondRequest)
-                        }
+    /**
+     * Отправляет запрос к GigaChat API и возвращает ответ
+     */
+    private suspend fun sendGigaChatRequest(token: String, request: GigaChatRequest): GigaChatResponse {
+        return try {
+            logger.debug("Sending request to GigaChat API: $BASE_URL")
+            println("Sending POST request to: $BASE_URL\n$request")
 
-                        println("Second request status: ${secondResponse.status}")
-                        val finalBody = secondResponse.body<GigaChatResponse>()
-                        println("Final response: $finalBody")
+            val response: HttpResponse = httpClient.post(BASE_URL) {
+                header(HttpHeaders.Authorization, "Bearer $token")
+                header(HttpHeaders.ContentType, "application/json")
+                setBody(request)
+            }
 
-                        // Возвращаем финальный ответ
-                        StandardApiResponse(
-                            answer = finalBody.choices.first().message.content,
-                            promptTokens = body.usage.prompt_tokens + finalBody.usage.prompt_tokens,
-                            completionTokens = body.usage.completion_tokens + finalBody.usage.completion_tokens,
-                            totalTokens = body.usage.total_tokens + finalBody.usage.total_tokens
-                        )
-                    } catch (e: Exception) {
-                        logger.error("Error executing get_data_from_db function call", e)
-                        StandardApiResponse(
-                            answer = "Произошла ошибка при получении данных из базы данных: ${e.message}",
-                            promptTokens = body.usage.prompt_tokens,
-                            completionTokens = body.usage.completion_tokens,
-                            totalTokens = body.usage.total_tokens
-                        )
-                    }
-                }
+            println("Status: ${response.status}")
+            val body = response.body<GigaChatResponse>()
+            println(body)
 
-                "save_weather_to_db" -> {
-                    return try {
-                        logger.info("Executing function call: ${functionCall.name}")
-                        // Выполняем функцию и получаем результат
-                        val functionResult = execSaveWeatherToDbTool(functionCall.arguments!!)
-                        logger.info("Function result: $functionResult")
+            logger.debug("Received response from GigaChat API")
+            body
+        } catch (e: Exception) {
+            logger.error("Error sending request to GigaChat API", e)
+            throw e
+        }
+    }
 
-                        // Создаем список сообщений для повторного запроса
-                        val messagesWithFunctionResult = listOf(systemMessage) +
-                            historyMessages +
-                            body.choices.first().message + // сообщение с function_call
-                            GigaChatMessage(
-                                role = "function",
-                                content = functionResult,
-                                name = "save_weather_to_db"
-                            )
+    /**
+     * Обрабатывает function_call и возвращает результат выполнения
+     */
+    private suspend fun processFunctionCall(functionCall: FunctionCall): String {
+        return try {
+            logger.info("Executing function: ${functionCall.name}")
 
-                        // Создаем новый запрос с результатом функции
-                        val secondRequest = GigaChatRequest(
-                            model = "GigaChat",
-                            messages = messagesWithFunctionResult,
-                            temperature = context.temperature,
-                            max_tokens = context.maxTokens,
-                            functions = getTools()
-                        )
-
-                        println("Sending POST request to: $BASE_URL\n$secondRequest")
-                        val secondResponse: HttpResponse = httpClient.post(BASE_URL) {
-                            header(HttpHeaders.Authorization, "Bearer $token")
-                            header(HttpHeaders.ContentType, "application/json")
-                            setBody(secondRequest)
-                        }
-
-                        println("Second request status: ${secondResponse.status}")
-                        val finalBody = secondResponse.body<GigaChatResponse>()
-                        println("Final response: $finalBody")
-
-                        // Возвращаем финальный ответ
-                        StandardApiResponse(
-                            answer = finalBody.choices.first().message.content,
-                            promptTokens = body.usage.prompt_tokens + finalBody.usage.prompt_tokens,
-                            completionTokens = body.usage.completion_tokens + finalBody.usage.completion_tokens,
-                            totalTokens = body.usage.total_tokens + finalBody.usage.total_tokens
-                        )
-                    } catch (e: Exception) {
-                        logger.error("Error executing save_weather_to_db function call", e)
-                        StandardApiResponse(
-                            answer = "Произошла ошибка при сохранении данных о погоде: ${e.message}",
-                            promptTokens = body.usage.prompt_tokens,
-                            completionTokens = body.usage.completion_tokens,
-                            totalTokens = body.usage.total_tokens
-                        )
-                    }
+            val result = when (functionCall.name) {
+                "weather_in_city" -> execWeatherInCityTool(functionCall.arguments!!)
+                "save_weather_to_db" -> execSaveWeatherToDbTool(functionCall.arguments!!)
+                else -> {
+                    logger.error("Unknown function call: ${functionCall.name}")
+                    """{"error": "Неизвестная функция: ${functionCall.name}"}"""
                 }
             }
-        }
 
+            logger.info("Function ${functionCall.name} executed successfully")
+            result
+        } catch (e: Exception) {
+            logger.error("Error processing function_call: ${functionCall.name}", e)
+            """{"error": "Ошибка при выполнении функции ${functionCall.name}: ${e.message}"}"""
+        }
+    }
+
+    /**
+     * Формирует список сообщений с результатом выполнения функции
+     */
+    private fun buildMessagesWithFunctionResult(
+        previousMessages: List<GigaChatMessage>,
+        assistantMessage: GigaChatMessage,
+        functionName: String,
+        functionResult: String
+    ): List<GigaChatMessage> {
+        logger.debug("Building messages with function result for: $functionName")
+        val functionResultMessage = GigaChatMessage(
+            role = "function",
+            content = functionResult,
+            name = functionName
+        )
+        return previousMessages + assistantMessage + functionResultMessage
+    }
+
+    /**
+     * Создает ответ с ошибкой
+     */
+    private fun createErrorResponse(
+        errorMessage: String,
+        promptTokens: Int,
+        completionTokens: Int,
+        totalTokens: Int
+    ): StandardApiResponse {
+        logger.error("Creating error response: $errorMessage")
         return StandardApiResponse(
-            answer = body.choices.first().message.content,
-            promptTokens = body.usage.prompt_tokens,
-            completionTokens = body.usage.completion_tokens,
-            totalTokens = body.usage.total_tokens
+            answer = errorMessage,
+            promptTokens = promptTokens,
+            completionTokens = completionTokens,
+            totalTokens = totalTokens
         )
     }
 
@@ -356,21 +278,6 @@ class GigaChatApiClient(
                 parameters = it.inputSchema.properties
             )
         }
-
-    }
-
-    private suspend fun execCityInUpperCaseTool(text: JsonObject): String {
-        val mcpClient = get<Client>(Client::class.java)
-        println("✓ Successfully connected to MCP server")
-
-        val request = CallToolRequest(CallToolRequestParams("city_in_uppercase", text))
-        val result = mcpClient.callTool(request)
-
-        // Извлекаем text из первого TextContent в result.content
-        return when (val firstContent = result.content.firstOrNull()) {
-            is TextContent -> firstContent.text
-            else -> ""
-        }
     }
 
     private suspend fun execWeatherInCityTool(arguments: JsonObject): String {
@@ -393,30 +300,6 @@ class GigaChatApiClient(
             """{"weather_data": "${weatherData.replace("\"", "\\\"").replace("\n", "\\n")}"}"""
         } catch (e: Exception) {
             logger.error("Error calling MCP server for weather_in_city", e)
-            """{"error": "Ошибка при вызове MCP сервера: ${e.message}"}"""
-        }
-    }
-
-    private suspend fun execGetDataFromDbTool(arguments: JsonObject): String {
-        return try {
-            val mcpClient = get<Client>(Client::class.java)
-            logger.info("Calling MCP server for get_data_from_db with arguments: $arguments")
-
-            val request = CallToolRequest(CallToolRequestParams("get_data_from_db", arguments))
-            val result = mcpClient.callTool(request)
-
-            // Извлекаем text из первого TextContent в result.content
-            val dbData = when (val firstContent = result.content.firstOrNull()) {
-                is TextContent -> firstContent.text
-                else -> "[]"
-            }
-
-            logger.info("Database data received from MCP server: $dbData")
-
-            // Возвращаем результат как есть (уже JSON)
-            dbData
-        } catch (e: Exception) {
-            logger.error("Error calling MCP server for get_data_from_db", e)
             """{"error": "Ошибка при вызове MCP сервера: ${e.message}"}"""
         }
     }

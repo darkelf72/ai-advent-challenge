@@ -3,6 +3,7 @@ import controllers.ClientController
 import controllers.ConfigController
 import database.DatabaseManager
 import di.appModule
+import io.ktor.client.HttpClient
 import io.ktor.http.*
 import io.ktor.serialization.kotlinx.json.*
 import io.ktor.server.application.*
@@ -31,9 +32,22 @@ fun main() {
         modules(appModule)
     }
 
-    val mcpClient = get<Client>(Client::class.java)
-    val sseClientTransport = get<SseClientTransport>(SseClientTransport::class.java)
-    runBlocking { mcpClient.connect(sseClientTransport) }
+    val dbMcpClient = get<Client>(Client::class.java, named("dbMcpClient"))
+    val httpMcpClient = get<Client>(Client::class.java, named("httpMcpClient"))
+    runBlocking {
+        dbMcpClient.connect(
+            transport = SseClientTransport(
+                urlString = "http://localhost:8081",
+                client = get(HttpClient::class.java, named("mcpHttpClient"))
+            )
+        )
+        httpMcpClient.connect(
+            transport = SseClientTransport(
+                urlString = "http://localhost:8082",
+                client = get(HttpClient::class.java, named("mcpHttpClient"))
+            )
+        )
+    }
 
     // Get dependencies from Koin
     val availableClients = get<Map<String, ApiClientInterface>>(Map::class.java, named("availableClients"))

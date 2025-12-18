@@ -16,6 +16,7 @@ import io.modelcontextprotocol.kotlin.sdk.types.CallToolRequest
 import io.modelcontextprotocol.kotlin.sdk.types.CallToolRequestParams
 import io.modelcontextprotocol.kotlin.sdk.types.TextContent
 import kotlinx.serialization.json.JsonObject
+import org.koin.core.qualifier.named
 import org.koin.java.KoinJavaComponent.get
 import org.slf4j.LoggerFactory
 import sber.dto.*
@@ -268,9 +269,9 @@ class GigaChatApiClient(
     }
 
     private suspend fun getTools(): List<Tool> {
-        val mcpClient = get<Client>(Client::class.java)
-        val toolsResponse = mcpClient.listTools()
-        val tools = toolsResponse.tools
+        val dbMcpClient = get<Client>(Client::class.java, named("dbMcpClient"))
+        val httpMcpClient = get<Client>(Client::class.java, named("httpMcpClient"))
+        val tools = dbMcpClient.listTools().tools + httpMcpClient.listTools().tools
         return tools.map {
             Tool(
                 name = it.name,
@@ -282,7 +283,7 @@ class GigaChatApiClient(
 
     private suspend fun execWeatherInCityTool(arguments: JsonObject): String {
         return try {
-            val mcpClient = get<Client>(Client::class.java)
+            val mcpClient = get<Client>(Client::class.java, named("httpMcpClient"))
             logger.info("Calling MCP server for weather_in_city with arguments: $arguments")
 
             val request = CallToolRequest(CallToolRequestParams("weather_in_city", arguments))
@@ -306,7 +307,7 @@ class GigaChatApiClient(
 
     private suspend fun execSaveWeatherToDbTool(arguments: JsonObject): String {
         return try {
-            val mcpClient = get<Client>(Client::class.java)
+            val mcpClient = get<Client>(Client::class.java, named("dbMcpClient"))
             logger.info("Calling MCP server for save_weather_to_db with arguments: $arguments")
 
             val request = CallToolRequest(CallToolRequestParams("save_weather_to_db", arguments))

@@ -31,12 +31,17 @@ val appModule = module {
     // Services
     single { SummarizationService(summarizeApiClient = get(named("summarizeApiClient"))) }
 
-    single<Client> {
-        // Create HTTP client for SSE transport
-        val transport = SseClientTransport(
-            urlString = "http://localhost:8082",
-            client = get<HttpClient>(named("mcpHttpClient"))
+    single<Client>(named("dbMcpClient")) {
+        Client(
+            clientInfo = Implementation(
+                name = "mcp-cli-client",
+                version = "1.0.0"
+            ),
+            options = ClientOptions()
         )
+    }
+
+    single<Client>(named("httpMcpClient")) {
         Client(
             clientInfo = Implementation(
                 name = "mcp-cli-client",

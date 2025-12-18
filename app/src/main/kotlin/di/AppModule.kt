@@ -1,7 +1,7 @@
 package di
 
-import ApiClientInterface
-import config.apiClientConfig
+import apiclients.ApiClientInterface
+import apiclients.config.apiClientConfig
 import database.repository.ClientConfigRepository
 import database.repository.MessageHistoryRepository
 import io.ktor.client.*
@@ -16,9 +16,9 @@ import io.modelcontextprotocol.kotlin.sdk.types.Implementation
 import kotlinx.serialization.json.Json
 import org.koin.core.qualifier.named
 import org.koin.dsl.module
-import sber.GigaChatApiClient
+import apiclients.gigachat.GigaChatApiClient
 import service.SummarizationService
-import yandex.YandexApiClient
+import apiclients.yandex.YandexApiClient
 import java.security.KeyStore
 import javax.net.ssl.TrustManagerFactory
 import javax.net.ssl.X509TrustManager

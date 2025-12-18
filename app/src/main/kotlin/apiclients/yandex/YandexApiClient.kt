@@ -1,9 +1,9 @@
-package yandex
+package apiclients.yandex
 
-import BaseApiClient
-import RequestContext
-import StandardApiResponse
-import config.ApiClientConfig
+import apiclients.BaseApiClient
+import apiclients.RequestContext
+import apiclients.StandardApiResponse
+import apiclients.config.ApiClientConfig
 import database.repository.ClientConfigRepository
 import database.repository.MessageHistoryRepository
 import io.ktor.client.*
@@ -11,10 +11,10 @@ import io.ktor.client.call.*
 import io.ktor.client.request.*
 import io.ktor.client.statement.*
 import io.ktor.http.*
-import yandex.dto.CompletionOptionsDto
-import yandex.dto.MessageDto
-import yandex.dto.RequestDto
-import yandex.dto.ResponseDto
+import apiclients.yandex.dto.CompletionOptionsDto
+import apiclients.yandex.dto.MessageDto
+import apiclients.yandex.dto.RequestDto
+import apiclients.yandex.dto.ResponseDto
 import java.math.BigDecimal
 import java.math.RoundingMode
 

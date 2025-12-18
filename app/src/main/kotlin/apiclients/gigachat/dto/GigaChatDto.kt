@@ -1,4 +1,4 @@
-package sber.dto
+package apiclients.gigachat.dto
 
 import kotlinx.serialization.Serializable
 import kotlinx.serialization.json.JsonElement

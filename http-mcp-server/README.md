@@ -213,7 +213,7 @@ mcp-server/
 ├── README.md
 └── src/
     └── main/
-        ├── kotlin/ru/sber/cb/aichallenge_one/mcp_server/
+        ├── kotlin/ru/gigachat/cb/aichallenge_one/mcp_server/
         │   ├── Application.kt          # Main entry point
         │   └── McpConfiguration.kt     # MCP server setup
         └── resources/

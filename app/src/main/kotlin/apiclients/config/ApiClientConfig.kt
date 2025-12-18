@@ -1,4 +1,4 @@
-package config
+package apiclients.config
 
 import kotlinx.serialization.Serializable
 

@@ -1,9 +1,15 @@
-package sber
+package apiclients.gigachat
 
-import BaseApiClient
-import RequestContext
-import StandardApiResponse
-import config.ApiClientConfig
+import apiclients.BaseApiClient
+import apiclients.RequestContext
+import apiclients.StandardApiResponse
+import apiclients.gigachat.dto.FunctionCall
+import apiclients.gigachat.dto.GigaChatMessage
+import apiclients.gigachat.dto.GigaChatRequest
+import apiclients.gigachat.dto.GigaChatResponse
+import apiclients.gigachat.dto.OAuthTokenResponse
+import apiclients.gigachat.dto.Tool
+import apiclients.config.ApiClientConfig
 import database.repository.ClientConfigRepository
 import database.repository.MessageHistoryRepository
 import io.ktor.client.*
@@ -19,7 +25,6 @@ import kotlinx.serialization.json.JsonObject
 import org.koin.core.qualifier.named
 import org.koin.java.KoinJavaComponent.get
 import org.slf4j.LoggerFactory
-import sber.dto.*
 import java.math.BigDecimal
 import java.math.RoundingMode
 import java.util.*

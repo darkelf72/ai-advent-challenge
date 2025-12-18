@@ -1,6 +1,6 @@
 package controllers
 
-import ApiClientInterface
+import apiclients.ApiClientInterface
 import dto.request.ClientSwitchRequest
 import dto.response.ClientSwitchResponse
 import io.ktor.http.*

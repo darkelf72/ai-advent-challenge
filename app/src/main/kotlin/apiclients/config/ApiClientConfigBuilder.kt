@@ -1,4 +1,4 @@
-package config
+package apiclients.config
 
 class ApiClientConfigBuilder {
     var systemPrompt: String = "Ты - генеративная языковая модель"

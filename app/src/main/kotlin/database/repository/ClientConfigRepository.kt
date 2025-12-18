@@ -1,6 +1,6 @@
 package database.repository
 
-import config.ApiClientConfig
+import apiclients.config.ApiClientConfig
 import database.tables.ClientConfigTable
 import org.jetbrains.exposed.sql.*
 import org.jetbrains.exposed.sql.SqlExpressionBuilder.eq

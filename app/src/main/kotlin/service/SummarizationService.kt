@@ -1,9 +1,8 @@
 package service
 
-import ApiClientInterface
+import apiclients.ApiClientInterface
 import dto.response.SummarizeResponse
 import dto.ChatMessage
-import kotlinx.serialization.encodeToString
 import kotlinx.serialization.json.Json
 
 /**

@@ -1,4 +1,6 @@
-import config.ApiClientConfig
+package apiclients
+
+import apiclients.config.ApiClientConfig
 import dto.ApiResponse
 import dto.ChatMessage
 

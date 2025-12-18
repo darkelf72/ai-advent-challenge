@@ -1,4 +1,6 @@
-import config.ApiClientConfig
+package apiclients
+
+import apiclients.config.ApiClientConfig
 import database.repository.ClientConfigRepository
 import database.repository.MessageHistoryRepository
 import dto.ApiResponse

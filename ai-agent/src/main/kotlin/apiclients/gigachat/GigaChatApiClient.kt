@@ -12,7 +12,7 @@ import io.ktor.client.call.*
 import io.ktor.client.request.*
 import io.ktor.client.statement.*
 import io.ktor.http.*
-import mcp.ToolRegistry
+import mcp.McpToolsService
 import org.slf4j.LoggerFactory
 import java.math.BigDecimal
 import java.math.RoundingMode
@@ -22,6 +22,7 @@ import java.util.*
  * API клиент для GigaChat (Сбер).
  * Наследует общую логику от BaseApiClient и реализует специфику GigaChat API.
  * Включает логику OAuth аутентификации с кешированием токена.
+ * Динамически получает список tools из MCP серверов при каждом запросе через McpToolsService.
  */
 class GigaChatApiClient(
     httpClient: HttpClient,
@@ -29,7 +30,7 @@ class GigaChatApiClient(
     clientName: String,
     configRepository: ClientConfigRepository,
     messageHistoryRepository: MessageHistoryRepository,
-    private val toolRegistry: ToolRegistry
+    private val mcpToolsService: McpToolsService
 ) : BaseApiClient(httpClient, apiClientConfig, clientName, configRepository, messageHistoryRepository) {
 
     private val logger = LoggerFactory.getLogger(GigaChatApiClient::class.java)
@@ -93,7 +94,6 @@ class GigaChatApiClient(
             var totalTokensCount = 0
             val maxIterations = 10 // Защита от бесконечного цикла
             var iteration = 0
-            val functions = getTools()
 
             while (iteration < maxIterations) {
                 iteration++
@@ -104,7 +104,7 @@ class GigaChatApiClient(
                     messages = currentMessages,
                     temperature = context.temperature,
                     max_tokens = context.maxTokens,
-                    functions = functions
+                    functions = getTools()
                 )
 
                 val response = sendGigaChatRequest(token, request)
@@ -143,8 +143,8 @@ class GigaChatApiClient(
                     )
                 }
 
-                logger.info("Processing function_call: ${functionCall.name}")
-                val functionResult = processFunctionCall(functionCall)
+                logger.info("Processing function_call: ${functionCall.name} with arguments${functionCall.arguments}")
+                val functionResult = mcpToolsService.executeTool(functionCall.name, functionCall.arguments)
 
                 // Формируем новый список сообщений с результатом функции
                 currentMessages = buildMessagesWithFunctionResult(
@@ -204,28 +204,6 @@ class GigaChatApiClient(
     }
 
     /**
-     * Обрабатывает function_call и возвращает результат выполнения.
-     * Делегирует выполнение в ToolRegistry.
-     */
-    private suspend fun processFunctionCall(functionCall: FunctionCall): String {
-        return try {
-            logger.info("Executing function: ${functionCall.name}")
-
-            if (functionCall.arguments == null) {
-                logger.error("Function call ${functionCall.name} has no arguments")
-                return """{"error": "Аргументы функции не указаны", "status": "error"}"""
-            }
-
-            val result = toolRegistry.executeTool(functionCall.name, functionCall.arguments)
-            logger.info("Function ${functionCall.name} executed successfully")
-            result
-        } catch (e: Exception) {
-            logger.error("Error processing function_call: ${functionCall.name}", e)
-            """{"error": "Ошибка при выполнении функции ${functionCall.name}: ${e.message}", "status": "error"}"""
-        }
-    }
-
-    /**
      * Формирует список сообщений с результатом выполнения функции
      */
     private fun buildMessagesWithFunctionResult(
@@ -272,17 +250,16 @@ class GigaChatApiClient(
     }
 
     /**
-     * Получает список доступных инструментов из ToolRegistry.
-     * Преобразует формат ToolExecutor в формат GigaChat Tool.
-     * Может инициировать подключение к MCP серверам при первом вызове.
+     * Получает список доступных инструментов из MCP серверов через McpToolsService.
+     * Преобразует формат MCP Tool в формат GigaChat Tool.
+     * Запрашивает актуальный список tools при каждом вызове.
      */
-    private suspend fun getTools(): List<Tool> {
-        return toolRegistry.getAllTools().map { executor ->
-            Tool(
-                name = executor.toolName,
-                description = executor.description,
-                parameters = executor.parameters
+    private suspend fun getTools(): List<GigaChatTool> =
+        mcpToolsService.getAvailableTools().map {
+            GigaChatTool(
+                name = it.name,
+                description = it.description ?: "No description",
+                parameters = it.inputSchema.properties
             )
         }
-    }
 }

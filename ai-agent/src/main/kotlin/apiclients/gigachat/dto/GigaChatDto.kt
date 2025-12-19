@@ -1,7 +1,6 @@
 package apiclients.gigachat.dto
 
 import kotlinx.serialization.Serializable
-import kotlinx.serialization.json.JsonElement
 import kotlinx.serialization.json.JsonObject
 
 @Serializable
@@ -27,7 +26,7 @@ data class GigaChatRequest(
     val top_p: Double = 0.9,
     val max_tokens: Int = 1024,
     val function_call: String =  "auto",
-    val functions: List<Tool>
+    val functions: List<GigaChatTool>
 )
 
 @Serializable
@@ -61,8 +60,8 @@ data class OAuthTokenResponse(
 )
 
 @Serializable
-data class Tool(
+data class GigaChatTool(
     val name: String,
     val description: String,
-    val parameters: JsonElement?
+    val parameters: JsonObject?
 )

@@ -14,7 +14,6 @@ import io.ktor.server.netty.*
 import io.ktor.server.plugins.contentnegotiation.*
 import io.ktor.server.plugins.cors.routing.*
 import io.ktor.server.routing.*
-import mcp.ToolRegistry
 import org.koin.core.context.startKoin
 import org.koin.core.qualifier.named
 import org.koin.java.KoinJavaComponent.get
@@ -30,12 +29,9 @@ fun main() {
         modules(appModule)
     }
 
-    // ToolRegistry теперь с lazy-подключением, инициализация не требуется при запуске
-    val toolRegistry = get<ToolRegistry>(ToolRegistry::class.java)
-
     // Логируем, что приложение готово к работе (MCP серверы подключатся при первом обращении)
     println("AI Agent initialized. MCP servers will be connected on first use.")
-    println("Available tools: ${toolRegistry.getToolNames().joinToString(", ")}")
+    println("Tools will be loaded dynamically from MCP servers.")
 
     // Get dependencies from Koin
     val availableClients = get<Map<String, ApiClientInterface>>(Map::class.java, named("availableClients"))

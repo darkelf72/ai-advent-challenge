@@ -16,9 +16,7 @@ import io.modelcontextprotocol.kotlin.sdk.client.ClientOptions
 import io.modelcontextprotocol.kotlin.sdk.types.Implementation
 import kotlinx.serialization.json.Json
 import mcp.McpClientManager
-import mcp.ToolRegistry
-import mcp.tools.SaveWeatherToDbExecutor
-import mcp.tools.WeatherInCityExecutor
+import mcp.McpToolsService
 import org.koin.core.qualifier.named
 import org.koin.dsl.module
 import service.SummarizationService
@@ -140,41 +138,6 @@ val appModule = module {
         )
     }
 
-    single<GigaChatApiClient> {
-        GigaChatApiClient(
-            httpClient = get(named("sslHttpClient")),
-            apiClientConfig = chatApiClientConfig,
-            clientName = "gigachat",
-            configRepository = get(),
-            messageHistoryRepository = get(),
-            toolRegistry = get()
-        )
-    }
-
-    single<ApiClientInterface>(named("summarizeApiClient")) {
-        GigaChatApiClient(
-            httpClient = get(named("sslHttpClient")),
-            apiClientConfig = summarizeApiClientConfig,
-            clientName = "gigachat-summarize",
-            configRepository = get(),
-            messageHistoryRepository = get(),
-            toolRegistry = get()
-        )
-    }
-
-    // MCP Tool Executors
-    single<WeatherInCityExecutor> {
-        WeatherInCityExecutor(
-            mcpClient = get(named("httpMcpClient"))
-        )
-    }
-
-    single<SaveWeatherToDbExecutor> {
-        SaveWeatherToDbExecutor(
-            mcpClient = get(named("dbMcpClient"))
-        )
-    }
-
     // MCP Client Manager для ленивого подключения
     single<McpClientManager> {
         val dbMcpServerUrl = System.getenv("DB_MCP_SERVER_URL") ?: "http://localhost:8081"
@@ -189,14 +152,32 @@ val appModule = module {
         )
     }
 
-    // Tool Registry с поддержкой ленивой загрузки
-    single<ToolRegistry> {
-        ToolRegistry(
-            executors = listOf(
-                get<WeatherInCityExecutor>(),
-                get<SaveWeatherToDbExecutor>()
-            ),
+    // MCP Tools Service для динамического получения и выполнения tools
+    single<McpToolsService> {
+        McpToolsService(
             mcpClientManager = get()
+        )
+    }
+
+    single<GigaChatApiClient> {
+        GigaChatApiClient(
+            httpClient = get(named("sslHttpClient")),
+            apiClientConfig = chatApiClientConfig,
+            clientName = "gigachat",
+            configRepository = get(),
+            messageHistoryRepository = get(),
+            mcpToolsService = get()
+        )
+    }
+
+    single<ApiClientInterface>(named("summarizeApiClient")) {
+        GigaChatApiClient(
+            httpClient = get(named("sslHttpClient")),
+            apiClientConfig = summarizeApiClientConfig,
+            clientName = "gigachat-summarize",
+            configRepository = get(),
+            messageHistoryRepository = get(),
+            mcpToolsService = get()
         )
     }
 

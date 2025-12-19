@@ -1,0 +1,76 @@
+version: '3.8'
+
+services:
+  # Database MCP Server
+  db-mcp-server:
+    build:
+      context: .
+      dockerfile: Dockerfile.db-mcp-server
+    container_name: db-mcp-server
+    ports:
+      - "8081:8081"
+    volumes:
+      - db-data:/app/data
+    networks:
+      - ai-network
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "wget", "--quiet", "--tries=1", "--spider", "http://localhost:8081/health"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 30s
+
+  # HTTP MCP Server
+  http-mcp-server:
+    build:
+      context: .
+      dockerfile: Dockerfile.http-mcp-server
+    container_name: http-mcp-server
+    ports:
+      - "8082:8082"
+    networks:
+      - ai-network
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "wget", "--quiet", "--tries=1", "--spider", "http://localhost:8082/health"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 30s
+
+  # AI Agent - Main application
+  ai-agent:
+    build:
+      context: .
+      dockerfile: Dockerfile.ai-agent
+    container_name: ai-agent
+    ports:
+      - "9999:9999"
+    environment:
+      - YANDEX_API_KEY=${YANDEX_API_KEY:-}
+      - GIGA_CHAT_API_KEY=${GIGA_CHAT_API_KEY:-}
+      - DB_MCP_SERVER_URL=http://db-mcp-server:8081
+      - HTTP_MCP_SERVER_URL=http://http-mcp-server:8082
+    networks:
+      - ai-network
+    depends_on:
+      db-mcp-server:
+        condition: service_healthy
+      http-mcp-server:
+        condition: service_healthy
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "wget", "--quiet", "--tries=1", "--spider", "http://localhost:9999/"]
+      interval: 15s
+      timeout: 10s
+      retries: 3
+      start_period: 40s
+
+networks:
+  ai-network:
+    driver: bridge
+
+volumes:
+  db-data:
+    driver: local

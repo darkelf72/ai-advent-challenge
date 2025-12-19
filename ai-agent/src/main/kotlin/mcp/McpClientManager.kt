@@ -14,20 +14,26 @@ import org.slf4j.LoggerFactory
 class McpClientManager(
     private val dbMcpClient: Client,
     private val httpMcpClient: Client,
+    private val localMcpClient: Client,
     private val mcpHttpClient: HttpClient,
     private val dbMcpServerUrl: String,
-    private val httpMcpServerUrl: String
+    private val httpMcpServerUrl: String,
+    private val localMcpServerUrl: String
 ) {
     private val logger = LoggerFactory.getLogger(McpClientManager::class.java)
 
     private val dbMutex = Mutex()
     private val httpMutex = Mutex()
+    private val localMutex = Mutex()
 
     @Volatile
     private var dbClientConnected = false
 
     @Volatile
     private var httpClientConnected = false
+
+    @Volatile
+    private var localClientConnected = false
 
     /**
      * Получает DB MCP клиент, подключаясь к серверу при необходимости
@@ -84,36 +90,29 @@ class McpClientManager(
     }
 
     /**
-     * Проверяет, подключен ли DB MCP клиент
+     * Получает Local MCP клиент, подключаясь к серверу при необходимости
      */
-    fun isDbClientConnected(): Boolean = dbClientConnected
-
-    /**
-     * Проверяет, подключен ли HTTP MCP клиент
-     */
-    fun isHttpClientConnected(): Boolean = httpClientConnected
-
-    /**
-     * Возвращает статус подключений
-     */
-    fun getConnectionStatus(): ConnectionStatus {
-        return ConnectionStatus(
-            dbMcpConnected = dbClientConnected,
-            httpMcpConnected = httpClientConnected
-        )
+    suspend fun getLocalClient(): Client? {
+        if (!localClientConnected) {
+            localMutex.withLock {
+                if (!localClientConnected) {
+                    try {
+                        logger.info("Connecting to Local MCP server at $localMcpServerUrl...")
+                        localMcpClient.connect(
+                            transport = SseClientTransport(
+                                urlString = localMcpServerUrl,
+                                client = mcpHttpClient
+                            )
+                        )
+                        localClientConnected = true
+                        logger.info("Successfully connected to Local MCP server")
+                    } catch (e: Exception) {
+                        logger.error("Failed to connect to Local MCP server at $localMcpServerUrl: ${e.message}")
+                        return null
+                    }
+                }
+            }
+        }
+        return localMcpClient
     }
-}
-
-/**
- * Статус подключений к MCP серверам
- */
-data class ConnectionStatus(
-    val dbMcpConnected: Boolean,
-    val httpMcpConnected: Boolean
-) {
-    val allConnected: Boolean
-        get() = dbMcpConnected && httpMcpConnected
-
-    val anyConnected: Boolean
-        get() = dbMcpConnected || httpMcpConnected
 }

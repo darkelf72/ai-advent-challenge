@@ -1,0 +1,31 @@
+ # Multi-stage build for http-mcp-server module
+FROM gradle:8.11-jdk21-alpine AS builder
+
+WORKDIR /app
+
+# Copy gradle files for dependency caching
+COPY build.gradle.kts settings.gradle.kts gradle.properties ./
+COPY http-mcp-server/build.gradle.kts ./http-mcp-server/
+
+# Download dependencies
+RUN gradle http-mcp-server:dependencies --no-daemon || true
+
+# Copy source code
+COPY http-mcp-server ./http-mcp-server
+
+# Build the application
+RUN gradle http-mcp-server:installDist --no-daemon
+
+# Runtime stage
+FROM eclipse-temurin:21-jre-alpine
+
+WORKDIR /app
+
+# Copy built application from builder stage
+COPY --from=builder /app/http-mcp-server/build/install/http-mcp-server /app
+
+# Expose port
+EXPOSE 8082
+
+# Run the application
+CMD ["/app/bin/http-mcp-server"]

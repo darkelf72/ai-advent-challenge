@@ -45,6 +45,17 @@ class McpToolsService(
             }
         }
 
+        // Получаем tools из Local MCP клиента
+        mcpClientManager.getLocalClient()?.let { client ->
+            try {
+                val localTools = client.listTools(ListToolsRequest())
+                tools.addAll(localTools.tools)
+                logger.debug("Retrieved ${localTools.tools.size} tools from Local MCP client")
+            } catch (e: Exception) {
+                logger.warn("Failed to get tools from Local MCP client: ${e.message}")
+            }
+        }
+
         logger.info("Total available tools: ${tools.size}")
         return tools
     }
@@ -88,6 +99,21 @@ class McpToolsService(
                     }
                 } catch (e: Exception) {
                     logger.debug("Failed to execute $toolName via HTTP MCP client: ${e.message}")
+                }
+            }
+
+            // Пробуем найти и выполнить tool через Local MCP клиент
+            mcpClientManager.getLocalClient()?.let { client ->
+                try {
+                    val tools = client.listTools(ListToolsRequest())
+                    if (tools.tools.any { it.name == toolName }) {
+                        logger.debug("Tool $toolName found in Local MCP client")
+                        val request = CallToolRequest(CallToolRequestParams(toolName, arguments))
+                        val result = client.callTool(request)
+                        return extractResultContent(result, toolName)
+                    }
+                } catch (e: Exception) {
+                    logger.debug("Failed to execute $toolName via Local MCP client: ${e.message}")
                 }
             }
 

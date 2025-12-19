@@ -52,6 +52,16 @@ val appModule = module {
         )
     }
 
+    single<Client>(named("localMcpClient")) {
+        Client(
+            clientInfo = Implementation(
+                name = "mcp-cli-client",
+                version = "1.0.0"
+            ),
+            options = ClientOptions()
+        )
+    }
+
     single<HttpClient>(named("mcpHttpClient")) {
         // Create HTTP client for SSE transport
         HttpClient(CIO) {
@@ -140,15 +150,18 @@ val appModule = module {
 
     // MCP Client Manager для ленивого подключения
     single<McpClientManager> {
-        val dbMcpServerUrl = System.getenv("DB_MCP_SERVER_URL") ?: "http://localhost:8081"
-        val httpMcpServerUrl = System.getenv("HTTP_MCP_SERVER_URL") ?: "http://localhost:8082"
+        val localMcpServerUrl = System.getenv("LOCAL_MCP_SERVER_URL")
+        val dbMcpServerUrl = System.getenv("DB_MCP_SERVER_URL")
+        val httpMcpServerUrl = System.getenv("HTTP_MCP_SERVER_URL")
 
         McpClientManager(
             dbMcpClient = get(named("dbMcpClient")),
             httpMcpClient = get(named("httpMcpClient")),
+            localMcpClient = get(named("localMcpClient")),
             mcpHttpClient = get(named("mcpHttpClient")),
             dbMcpServerUrl = dbMcpServerUrl,
-            httpMcpServerUrl = httpMcpServerUrl
+            httpMcpServerUrl = httpMcpServerUrl,
+            localMcpServerUrl = localMcpServerUrl
         )
     }
 

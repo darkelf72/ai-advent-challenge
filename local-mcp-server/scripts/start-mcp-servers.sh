@@ -8,7 +8,7 @@ YELLOW='\033[1;33m'
 NC='\033[0m' # No Color
 
 echo -e "${GREEN}========================================${NC}"
-echo -e "${GREEN}Starting MCP Servers${NC}"
+echo -e "${GREEN}Starting HTTP MCP Server${NC}"
 echo -e "${GREEN}========================================${NC}"
 echo ""
 
@@ -39,24 +39,23 @@ if [ ! -f "docker-compose.yml" ]; then
     exit 1
 fi
 
-# Start only MCP servers (db-mcp-server and http-mcp-server)
-echo -e "${GREEN}Starting db-mcp-server and http-mcp-server...${NC}"
-docker-compose up -d db-mcp-server http-mcp-server
+# Start only HTTP MCP server
+echo -e "${GREEN}Starting http-mcp-server...${NC}"
+docker-compose up -d http-mcp-server
 
-# Check if containers started successfully
+# Check if container started successfully
 if [ $? -eq 0 ]; then
     echo ""
-    echo -e "${GREEN}MCP Servers started successfully!${NC}"
+    echo -e "${GREEN}HTTP MCP Server started successfully!${NC}"
     echo ""
-    echo -e "${GREEN}Running containers:${NC}"
-    docker ps --filter "name=db-mcp-server" --filter "name=http-mcp-server" --format "table {{.Names}}\t{{.Status}}\t{{.Ports}}"
+    echo -e "${GREEN}Running container:${NC}"
+    docker ps --filter "name=http-mcp-server" --format "table {{.Names}}\t{{.Status}}\t{{.Ports}}"
     echo ""
-    echo -e "${GREEN}Access URLs:${NC}"
-    echo -e "  - DB MCP Server:    http://localhost:8081"
+    echo -e "${GREEN}Access URL:${NC}"
     echo -e "  - HTTP MCP Server:  http://localhost:8082"
     echo ""
     exit 0
 else
-    echo -e "${RED}Failed to start MCP servers!${NC}"
+    echo -e "${RED}Failed to start HTTP MCP server!${NC}"
     exit 1
 fi

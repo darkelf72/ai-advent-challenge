@@ -39,7 +39,7 @@ fun Application.configureMcpServer() {
                 // Tool: run_mcp_servers
                 addTool(
                     name = "run_mcp_servers",
-                    description = "Запускает MCP серверы (db-mcp-server и http-mcp-server) в Docker контейнерах",
+                    description = "Запускает MCP серверы в Docker контейнерах",
                     inputSchema = ToolSchema(
                         buildJsonObject {
                             put("type", "object")
@@ -94,7 +94,7 @@ fun Application.configureMcpServer() {
                 // Tool: stop_mcp_servers
                 addTool(
                     name = "stop_mcp_servers",
-                    description = "Останавливает MCP серверы (db-mcp-server и http-mcp-server) в Docker контейнерах",
+                    description = "Останавливает MCP серверы в Docker контейнерах",
                     inputSchema = ToolSchema(
                         buildJsonObject {
                             put("type", "object")

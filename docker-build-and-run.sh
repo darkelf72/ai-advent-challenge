@@ -47,18 +47,19 @@ COMMAND=${1:-up}
 case $COMMAND in
     build)
         echo -e "${GREEN}Building Docker images...${NC}"
-        docker-compose build --no-cache
+        docker-compose build --no-cache ai-agent local-mcp-server db-mcp-server
         ;;
 
     up)
         echo -e "${GREEN}Starting services...${NC}"
-        docker-compose up -d
+        docker-compose up -d ai-agent local-mcp-server db-mcp-server
         echo ""
         echo -e "${GREEN}Services started successfully!${NC}"
         echo ""
         echo -e "${GREEN}Access URLs:${NC}"
         echo -e "  - AI Agent:           http://localhost:9999"
         echo -e "  - Local MCP Server:   http://localhost:8080"
+        echo -e "  - DB MCP Server:      http://localhost:8081"
         echo ""
         echo -e "${YELLOW}To view logs:${NC} docker-compose logs -f"
         echo -e "${YELLOW}To stop:${NC} ./docker-build-and-run.sh stop"
@@ -96,8 +97,8 @@ case $COMMAND in
     rebuild)
         echo -e "${GREEN}Rebuilding and restarting services...${NC}"
         docker-compose down
-        docker-compose build --no-cache
-        docker-compose up -d
+        docker-compose build --no-cache ai-agent local-mcp-server db-mcp-server
+        docker-compose up -d ai-agent local-mcp-server db-mcp-server
         echo -e "${GREEN}Rebuild completed!${NC}"
         ;;
 

@@ -150,9 +150,9 @@ val appModule = module {
 
     // MCP Client Manager для ленивого подключения
     single<McpClientManager> {
-        val localMcpServerUrl = System.getenv("LOCAL_MCP_SERVER_URL")
-        val dbMcpServerUrl = System.getenv("DB_MCP_SERVER_URL")
-        val httpMcpServerUrl = System.getenv("HTTP_MCP_SERVER_URL")
+        val localMcpServerUrl = System.getenv("LOCAL_MCP_SERVER_URL") ?: "http://localhost:8080"
+        val dbMcpServerUrl = System.getenv("DB_MCP_SERVER_URL") ?: "http://localhost:8081"
+        val httpMcpServerUrl = System.getenv("HTTP_MCP_SERVER_URL") ?: "http://localhost:8082"
 
         McpClientManager(
             dbMcpClient = get(named("dbMcpClient")),

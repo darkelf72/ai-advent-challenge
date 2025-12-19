@@ -4,7 +4,6 @@ import controllers.ClientController
 import controllers.ConfigController
 import database.DatabaseManager
 import di.appModule
-import io.ktor.client.HttpClient
 import io.ktor.http.*
 import io.ktor.serialization.kotlinx.json.*
 import io.ktor.server.application.*
@@ -15,9 +14,6 @@ import io.ktor.server.netty.*
 import io.ktor.server.plugins.contentnegotiation.*
 import io.ktor.server.plugins.cors.routing.*
 import io.ktor.server.routing.*
-import io.modelcontextprotocol.kotlin.sdk.client.Client
-import io.modelcontextprotocol.kotlin.sdk.client.SseClientTransport
-import kotlinx.coroutines.runBlocking
 import mcp.ToolRegistry
 import org.koin.core.context.startKoin
 import org.koin.core.qualifier.named
@@ -34,28 +30,12 @@ fun main() {
         modules(appModule)
     }
 
-    val dbMcpClient = get<Client>(Client::class.java, named("dbMcpClient"))
-    val httpMcpClient = get<Client>(Client::class.java, named("httpMcpClient"))
+    // ToolRegistry теперь с lazy-подключением, инициализация не требуется при запуске
     val toolRegistry = get<ToolRegistry>(ToolRegistry::class.java)
 
-    runBlocking {
-        // Connect MCP clients
-        dbMcpClient.connect(
-            transport = SseClientTransport(
-                urlString = "http://localhost:8081",
-                client = get(HttpClient::class.java, named("mcpHttpClient"))
-            )
-        )
-        httpMcpClient.connect(
-            transport = SseClientTransport(
-                urlString = "http://localhost:8082",
-                client = get(HttpClient::class.java, named("mcpHttpClient"))
-            )
-        )
-
-        // Initialize ToolRegistry (loads and caches all tools)
-        toolRegistry.initialize()
-    }
+    // Логируем, что приложение готово к работе (MCP серверы подключатся при первом обращении)
+    println("AI Agent initialized. MCP servers will be connected on first use.")
+    println("Available tools: ${toolRegistry.getToolNames().joinToString(", ")}")
 
     // Get dependencies from Koin
     val availableClients = get<Map<String, ApiClientInterface>>(Map::class.java, named("availableClients"))

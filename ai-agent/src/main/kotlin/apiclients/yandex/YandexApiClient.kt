@@ -32,7 +32,7 @@ class YandexApiClient(
 
     private companion object {
         const val URL = "https://llm.api.cloud.yandex.net/foundationModels/v1/completion"
-        val apiKey: String = System.getProperty("yandexApiKey")
+        val apiKey: String = System.getenv("YANDEX_API_KEY")
     }
 
     /**

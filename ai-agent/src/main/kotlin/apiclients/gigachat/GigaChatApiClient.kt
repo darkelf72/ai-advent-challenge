@@ -35,7 +35,7 @@ class GigaChatApiClient(
     private val logger = LoggerFactory.getLogger(GigaChatApiClient::class.java)
 
     private companion object {
-        val apiKey: String = System.getProperty("gigaChatApiKey")
+        val apiKey: String = System.getenv("GIGA_CHAT_API_KEY")
         const val BASE_URL = "https://gigachat.devices.sberbank.ru/api/v1//chat/completions"
         const val AUTH_URL = "https://ngw.devices.sberbank.ru:9443/api/v2/oauth"
     }
@@ -274,8 +274,9 @@ class GigaChatApiClient(
     /**
      * Получает список доступных инструментов из ToolRegistry.
      * Преобразует формат ToolExecutor в формат GigaChat Tool.
+     * Может инициировать подключение к MCP серверам при первом вызове.
      */
-    private fun getTools(): List<Tool> {
+    private suspend fun getTools(): List<Tool> {
         return toolRegistry.getAllTools().map { executor ->
             Tool(
                 name = executor.toolName,

@@ -15,6 +15,7 @@ import io.modelcontextprotocol.kotlin.sdk.client.Client
 import io.modelcontextprotocol.kotlin.sdk.client.ClientOptions
 import io.modelcontextprotocol.kotlin.sdk.types.Implementation
 import kotlinx.serialization.json.Json
+import mcp.McpClientManager
 import mcp.ToolRegistry
 import mcp.tools.SaveWeatherToDbExecutor
 import mcp.tools.WeatherInCityExecutor
@@ -174,13 +175,28 @@ val appModule = module {
         )
     }
 
-    // Tool Registry
+    // MCP Client Manager для ленивого подключения
+    single<McpClientManager> {
+        val dbMcpServerUrl = System.getenv("DB_MCP_SERVER_URL") ?: "http://localhost:8081"
+        val httpMcpServerUrl = System.getenv("HTTP_MCP_SERVER_URL") ?: "http://localhost:8082"
+
+        McpClientManager(
+            dbMcpClient = get(named("dbMcpClient")),
+            httpMcpClient = get(named("httpMcpClient")),
+            mcpHttpClient = get(named("mcpHttpClient")),
+            dbMcpServerUrl = dbMcpServerUrl,
+            httpMcpServerUrl = httpMcpServerUrl
+        )
+    }
+
+    // Tool Registry с поддержкой ленивой загрузки
     single<ToolRegistry> {
         ToolRegistry(
             executors = listOf(
                 get<WeatherInCityExecutor>(),
                 get<SaveWeatherToDbExecutor>()
-            )
+            ),
+            mcpClientManager = get()
         )
     }
 

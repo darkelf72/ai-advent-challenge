@@ -47,7 +47,7 @@ tasks.test {
 }
 
 kotlin {
-    jvmToolchain(24)
+    jvmToolchain(21)
 }
 
 application {
@@ -55,6 +55,6 @@ application {
 }
 
 tasks.named<JavaExec>("run") {
-    systemProperty("yandexApiKey", project.findProperty("yandexApiKey") as String? ?: "")
-    systemProperty("gigaChatApiKey", project.findProperty("gigaChatApiKey") as String? ?: "")
+    environment("YANDEX_API_KEY", project.findProperty("yandexApiKey") as String)
+    environment("GIGA_CHAT_API_KEY", project.findProperty("gigaChatApiKey") as String)
 }

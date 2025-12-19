@@ -48,3 +48,7 @@ truststore.jks
 *.db
 *.log
 .idea
+
+# Environment variables
+.env
+!.env.example

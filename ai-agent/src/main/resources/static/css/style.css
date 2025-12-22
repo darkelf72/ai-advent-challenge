@@ -613,3 +613,63 @@ body {
     color: #999;
     margin-bottom: 5px;
 }
+
+/* ============================================================
+   Document Upload and Progress Styles
+   ============================================================ */
+
+.btn-success {
+    background-color: #28a745;
+    border-color: #28a745;
+}
+
+.btn-success:hover {
+    background-color: #218838;
+    border-color: #1e7e34;
+}
+
+.modal-body {
+    padding: 20px;
+    text-align: center;
+}
+
+.upload-status {
+    font-size: 16px;
+    font-weight: 600;
+    margin-bottom: 20px;
+    min-height: 24px;
+}
+
+.progress-container {
+    width: 100%;
+    background-color: #e0e0e0;
+    border-radius: 10px;
+    overflow: hidden;
+    margin-bottom: 10px;
+    height: 30px;
+}
+
+.progress-bar {
+    height: 30px;
+    background-color: #007bff;
+    border-radius: 10px;
+    transition: width 0.3s ease, background-color 0.3s ease;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    color: white;
+    font-weight: bold;
+    font-size: 12px;
+}
+
+.progress-text {
+    font-size: 14px;
+    color: #666;
+    margin-top: 5px;
+}
+
+.modal-footer {
+    padding: 15px 20px;
+    text-align: center;
+    border-top: 1px solid #ddd;
+}

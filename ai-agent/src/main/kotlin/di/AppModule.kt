@@ -6,6 +6,10 @@ import apiclients.gigachat.GigaChatApiClient
 import apiclients.yandex.YandexApiClient
 import database.repository.ClientConfigRepository
 import database.repository.MessageHistoryRepository
+import embedding.OllamaClient
+import embedding.repository.SQLiteVectorStoreRepository
+import embedding.repository.VectorStoreRepository
+import embedding.service.DocumentEmbeddingService
 import io.ktor.client.*
 import io.ktor.client.engine.cio.*
 import io.ktor.client.plugins.contentnegotiation.*
@@ -31,6 +35,26 @@ val appModule = module {
 
     // Services
     single { SummarizationService(summarizeApiClient = get(named("summarizeApiClient"))) }
+
+    // Ollama Client for embeddings
+    single<OllamaClient> {
+        OllamaClient(
+            baseUrl = System.getenv("OLLAMA_BASE_URL") ?: "http://localhost:11434"
+        )
+    }
+
+    // Vector Store Repository (SQLite implementation, can be easily replaced)
+    single<VectorStoreRepository> {
+        SQLiteVectorStoreRepository()
+    }
+
+    // Document Embedding Service
+    single<DocumentEmbeddingService> {
+        DocumentEmbeddingService(
+            ollamaClient = get(),
+            vectorStoreRepository = get()
+        )
+    }
 
     single<Client>(named("dbMcpClient")) {
         Client(

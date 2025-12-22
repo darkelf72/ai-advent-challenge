@@ -646,6 +646,187 @@ mcpToolsModal.addEventListener('click', (e) => {
     }
 });
 
+// ============================================================
+// Document Upload and Processing
+// ============================================================
+
+(function initDocumentUpload() {
+    const loadDocumentButton = document.getElementById('loadDocumentButton');
+    const documentFileInput = document.getElementById('documentFileInput');
+    const documentProgressModal = document.getElementById('documentProgressModal');
+    const uploadStatusMessage = document.getElementById('uploadStatusMessage');
+    const progressBar = document.getElementById('progressBar');
+    const progressText = document.getElementById('progressText');
+    const closeProgressModalButton = document.getElementById('closeProgressModalButton');
+
+    // Only initialize if all required elements exist
+    if (!loadDocumentButton || !documentFileInput || !documentProgressModal ||
+        !uploadStatusMessage || !progressBar || !progressText || !closeProgressModalButton) {
+        console.log('Document upload feature not available - missing UI elements');
+        return;
+    }
+
+    let progressCheckInterval = null;
+    let currentFileName = '';
+
+    // Open file dialog when button is clicked
+    loadDocumentButton.addEventListener('click', () => {
+        documentFileInput.click();
+    });
+
+    // Handle file selection
+    documentFileInput.addEventListener('change', async (e) => {
+        const file = e.target.files[0];
+        if (!file) return;
+
+        // Save file name before clearing input
+        currentFileName = file.name;
+
+        // Validate file type
+        if (!file.name.endsWith('.txt')) {
+            alert('Only .txt files are supported');
+            return;
+        }
+
+        // Validate file size (10 MB)
+        const maxSize = 10 * 1024 * 1024;
+        if (file.size > maxSize) {
+            alert('File size exceeds maximum allowed size of 10 MB');
+            return;
+        }
+
+        // Show progress modal
+        documentProgressModal.style.display = 'flex';
+        uploadStatusMessage.textContent = 'Uploading document...';
+        uploadStatusMessage.style.color = '#007bff';
+        progressBar.style.width = '0%';
+        progressText.textContent = '0 / 0 chunks (0%)';
+        closeProgressModalButton.style.display = 'none';
+
+        try {
+            // Upload file
+            const formData = new FormData();
+            formData.append('file', file);
+
+            const response = await fetch('/api/document/upload', {
+                method: 'POST',
+                body: formData
+            });
+
+            const result = await response.json();
+
+            if (!result.success) {
+                throw new Error(result.message || 'Upload failed');
+            }
+
+            const requestId = result.data.requestId;
+            uploadStatusMessage.textContent = 'Processing document...';
+
+            // Start polling for progress
+            startProgressPolling(requestId);
+
+        } catch (error) {
+            console.error('Error uploading document:', error);
+            uploadStatusMessage.textContent = `Error: ${error.message}`;
+            uploadStatusMessage.style.color = '#dc3545';
+            closeProgressModalButton.style.display = 'inline-block';
+        }
+
+        // Clear file input
+        e.target.value = '';
+    });
+
+    // Start polling for progress
+    function startProgressPolling(requestId) {
+        // Clear any existing interval
+        if (progressCheckInterval) {
+            clearInterval(progressCheckInterval);
+        }
+
+        // Poll every 500ms
+        progressCheckInterval = setInterval(async () => {
+            try {
+                const response = await fetch(`/api/document/progress/${requestId}`);
+                const result = await response.json();
+
+                if (!result.success) {
+                    throw new Error(result.message || 'Failed to get progress');
+                }
+
+                const { current, total, percentage, status, error } = result.data;
+
+                // Update progress bar and text
+                progressBar.style.width = `${percentage}%`;
+                progressText.textContent = `${current} / ${total} chunks (${percentage}%)`;
+
+                if (status === 'COMPLETED') {
+                    clearInterval(progressCheckInterval);
+                    uploadStatusMessage.textContent = 'Document processed successfully!';
+                    uploadStatusMessage.style.color = '#28a745';
+                    progressBar.style.backgroundColor = '#28a745';
+                    closeProgressModalButton.style.display = 'inline-block';
+
+                    // Add success message to chat
+                    addSystemMessage(`Document "${currentFileName || 'document'}" loaded successfully. Created ${total} embedding chunks.`);
+
+                } else if (status === 'FAILED') {
+                    clearInterval(progressCheckInterval);
+                    uploadStatusMessage.textContent = `Processing failed: ${error || 'Unknown error'}`;
+                    uploadStatusMessage.style.color = '#dc3545';
+                    progressBar.style.backgroundColor = '#dc3545';
+                    closeProgressModalButton.style.display = 'inline-block';
+                }
+
+            } catch (error) {
+                console.error('Error checking progress:', error);
+                clearInterval(progressCheckInterval);
+                uploadStatusMessage.textContent = `Error: ${error.message}`;
+                uploadStatusMessage.style.color = '#dc3545';
+                closeProgressModalButton.style.display = 'inline-block';
+            }
+        }, 500);
+    }
+
+    // Close progress modal
+    closeProgressModalButton.addEventListener('click', () => {
+        documentProgressModal.style.display = 'none';
+        if (progressCheckInterval) {
+            clearInterval(progressCheckInterval);
+            progressCheckInterval = null;
+        }
+    });
+
+    // Helper function to add system message to chat
+    function addSystemMessage(message) {
+        const messageDiv = document.createElement('div');
+        messageDiv.className = 'message ai-message';
+
+        const label = document.createElement('div');
+        label.className = 'message-label ai-label';
+
+        const labelText = document.createElement('span');
+        labelText.textContent = 'System';
+
+        const timeStamp = document.createElement('span');
+        timeStamp.className = 'message-time';
+        timeStamp.textContent = formatTimestamp();
+
+        label.appendChild(labelText);
+        label.appendChild(timeStamp);
+
+        const content = document.createElement('div');
+        content.className = 'message-content';
+        content.textContent = message;
+        content.style.fontStyle = 'italic';
+        content.style.color = '#999';
+
+        messageDiv.appendChild(label);
+        messageDiv.appendChild(content);
+        chatBox.appendChild(messageDiv);
+        chatBox.scrollTop = chatBox.scrollHeight;
+    }
+})();
+
 loadSystemPrompt();
 loadTemperature();
 loadMaxTokens();

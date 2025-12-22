@@ -65,6 +65,17 @@ fun HTML.chatPage() {
                         classes = setOf("control-btn", "btn-primary")
                         +"View MCP Tools"
                     }
+                    button {
+                        id = "loadDocumentButton"
+                        classes = setOf("control-btn", "btn-success")
+                        +"Load Document"
+                    }
+                    input {
+                        type = InputType.file
+                        id = "documentFileInput"
+                        accept = ".txt"
+                        attributes["style"] = "display: none;"
+                    }
                 }
 
                 div(classes = "system-prompt-area") {
@@ -125,6 +136,44 @@ fun HTML.chatPage() {
                         }
                     }
                     div { id = "mcpToolsContainer" }
+                }
+            }
+
+            // Document Upload Progress Modal
+            div {
+                id = "documentProgressModal"
+                classes = setOf("modal-overlay")
+                div(classes = "modal-content") {
+                    div(classes = "modal-header") {
+                        div(classes = "modal-title") { +"Document Processing" }
+                    }
+                    div(classes = "modal-body") {
+                        div {
+                            id = "uploadStatusMessage"
+                            classes = setOf("upload-status")
+                            +"Processing document..."
+                        }
+                        div(classes = "progress-container") {
+                            div {
+                                id = "progressBar"
+                                classes = setOf("progress-bar")
+                                attributes["style"] = "width: 0%;"
+                            }
+                        }
+                        div {
+                            id = "progressText"
+                            classes = setOf("progress-text")
+                            +"0 / 0 chunks (0%)"
+                        }
+                    }
+                    div(classes = "modal-footer") {
+                        button {
+                            id = "closeProgressModalButton"
+                            classes = setOf("control-btn", "btn-primary")
+                            attributes["style"] = "display: none;"
+                            +"Close"
+                        }
+                    }
                 }
             }
 

@@ -2,7 +2,10 @@ import apiclients.ApiClientInterface
 import controllers.ChatController
 import controllers.ClientController
 import controllers.ConfigController
+import controllers.DocumentController
 import database.DatabaseManager
+import database.EmbeddingDatabaseManager
+import embedding.service.DocumentEmbeddingService
 import di.appModule
 import io.ktor.http.*
 import io.ktor.serialization.kotlinx.json.*
@@ -21,7 +24,8 @@ import service.SummarizationService
 import views.chatPage
 
 fun main() {
-    // Initialize database
+    // Initialize databases (embeddings first, then main DB becomes default)
+    EmbeddingDatabaseManager.init()
     DatabaseManager.init()
 
     // Initialize Koin DI
@@ -36,22 +40,25 @@ fun main() {
     // Get dependencies from Koin
     val availableClients = get<Map<String, ApiClientInterface>>(Map::class.java, named("availableClients"))
     val summarizationService = get<SummarizationService>(SummarizationService::class.java)
+    val documentEmbeddingService = get<DocumentEmbeddingService>(DocumentEmbeddingService::class.java)
 
     // Initialize controllers
     val clientController = ClientController(availableClients)
     val chatController = ChatController(clientController)
     val configController = ConfigController(clientController, summarizationService)
+    val documentController = DocumentController(documentEmbeddingService)
 
     // Start server
     embeddedServer(Netty, port = 9999, host = "0.0.0.0") {
-        configureServer(clientController, chatController, configController)
+        configureServer(clientController, chatController, configController, documentController)
     }.start(wait = true)
 }
 
 fun Application.configureServer(
     clientController: ClientController,
     chatController: ChatController,
-    configController: ConfigController
+    configController: ConfigController,
+    documentController: DocumentController
 ) {
     install(ContentNegotiation) { json() }
     install(CORS) {
@@ -88,5 +95,9 @@ fun Application.configureServer(
         get("/api/current-client") { clientController.handleGetCurrentClient(call) }
         get("/api/available-clients") { clientController.handleGetAvailableClients(call) }
         post("/api/switch-client") { clientController.handleSwitchClient(call) }
+
+        // Document embedding endpoints
+        post("/api/document/upload") { documentController.handleUploadDocument(call) }
+        get("/api/document/progress/{requestId}") { documentController.handleGetProgress(call) }
     }
 }

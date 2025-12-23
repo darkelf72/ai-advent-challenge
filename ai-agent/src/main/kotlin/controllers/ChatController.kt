@@ -14,7 +14,7 @@ class ChatController(private val clientController: ClientController) {
 
     suspend fun handleSendMessage(call: ApplicationCall) {
         val request = call.receive<ChatRequest>()
-        val apiResponse = clientController.apiClient.sendRequest(request.message)
+        val apiResponse = clientController.apiClient.sendRequest(request.message, request.useRag)
 
         val foo = """
             🕒 ${apiResponse.result!!.elapsedTime} мс

@@ -10,6 +10,9 @@ import embedding.OllamaClient
 import embedding.repository.SQLiteVectorStoreRepository
 import embedding.repository.VectorStoreRepository
 import embedding.service.DocumentEmbeddingService
+import embedding.service.VectorSearchService
+import embedding.rag.RagClient
+import embedding.rag.OllamaRagClient
 import io.ktor.client.*
 import io.ktor.client.engine.cio.*
 import io.ktor.client.plugins.contentnegotiation.*
@@ -53,6 +56,21 @@ val appModule = module {
         DocumentEmbeddingService(
             ollamaClient = get(),
             vectorStoreRepository = get()
+        )
+    }
+
+    // Vector Search Service for RAG
+    single<VectorSearchService> {
+        VectorSearchService(
+            vectorStoreRepository = get()
+        )
+    }
+
+    // RAG Client (Ollama implementation)
+    single<RagClient> {
+        OllamaRagClient(
+            ollamaClient = get(),
+            vectorSearchService = get()
         )
     }
 
@@ -168,7 +186,8 @@ val appModule = module {
             apiClientConfig = chatApiClientConfig,
             clientName = "yandex",
             configRepository = get(),
-            messageHistoryRepository = get()
+            messageHistoryRepository = get(),
+            ragClient = get()
         )
     }
 
@@ -203,7 +222,8 @@ val appModule = module {
             clientName = "gigachat",
             configRepository = get(),
             messageHistoryRepository = get(),
-            mcpToolsService = get()
+            mcpToolsService = get(),
+            ragClient = get()
         )
     }
 
@@ -214,7 +234,8 @@ val appModule = module {
             clientName = "gigachat-summarize",
             configRepository = get(),
             messageHistoryRepository = get(),
-            mcpToolsService = get()
+            mcpToolsService = get(),
+            ragClient = null  // RAG not needed for summarization
         )
     }
 

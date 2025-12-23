@@ -9,6 +9,7 @@ const temperatureValue = document.getElementById('temperatureValue');
 const maxTokensInput = document.getElementById('maxTokensInput');
 const autoSummarizeThresholdInput = document.getElementById('autoSummarizeThresholdInput');
 const clientSelector = document.getElementById('clientSelector');
+const useRagCheckbox = document.getElementById('useRagCheckbox');
 
 const loadTemperature = async () => {
     try {
@@ -73,6 +74,14 @@ temperatureSlider.addEventListener('input', (e) => {
 temperatureSlider.addEventListener('change', (e) => {
     const value = parseFloat(e.target.value);
     updateTemperature(value);
+});
+
+// Use RAG checkbox handler
+useRagCheckbox.addEventListener('change', (e) => {
+    const newTemperature = e.target.checked ? 0.2 : 0.7;
+    temperatureSlider.value = newTemperature;
+    temperatureValue.textContent = newTemperature.toFixed(1);
+    updateTemperature(newTemperature);
 });
 
 const loadMaxTokens = async () => {
@@ -439,10 +448,11 @@ const sendMessage = async () => {
     chatBox.appendChild(loadingDiv);
 
     try {
+        const useRag = useRagCheckbox.checked;
         const response = await fetch('/api/send', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ message })
+            body: JSON.stringify({ message, useRag })
         });
 
         chatBox.removeChild(loadingDiv);

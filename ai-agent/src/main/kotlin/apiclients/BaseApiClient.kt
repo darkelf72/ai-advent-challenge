@@ -6,8 +6,10 @@ import database.repository.MessageHistoryRepository
 import dto.ApiResponse
 import dto.ApiResult
 import dto.ChatMessage
+import embedding.rag.RagClient
 import io.ktor.client.*
 import kotlinx.coroutines.runBlocking
+import org.slf4j.LoggerFactory
 
 /**
  * Контекст запроса, передаваемый в executeApiRequest
@@ -48,8 +50,10 @@ abstract class BaseApiClient(
     protected val apiClientConfig: ApiClientConfig,
     protected val clientName: String,
     private val configRepository: ClientConfigRepository,
-    private val messageHistoryRepository: MessageHistoryRepository
+    private val messageHistoryRepository: MessageHistoryRepository,
+    private val ragClient: RagClient? = null
 ) : ApiClientInterface {
+    private val logger = LoggerFactory.getLogger(this::class.java)
 
     // Конфигурация клиента (общая для всех реализаций)
     private var _config: ApiClientConfig = apiClientConfig
@@ -106,41 +110,63 @@ abstract class BaseApiClient(
     /**
      * Синхронная обертка над асинхронным запросом
      */
-    override fun sendRequest(query: String): ApiResponse = runBlocking {
-        sendRequestAsync(query)
+    override fun sendRequest(query: String, useRag: Boolean): ApiResponse = runBlocking {
+        sendRequestAsync(query, useRag)
     }
 
     /**
      * Template Method - определяет общий алгоритм выполнения запроса.
      * Вызывает abstract методы для специфичной логики конкретного API.
      */
-    private suspend fun sendRequestAsync(userPrompt: String): ApiResponse {
+    private suspend fun sendRequestAsync(userPrompt: String, useRag: Boolean): ApiResponse {
         return try {
-            // Шаг 1: Добавляем сообщение пользователя в историю
+            // Шаг 1: Аугментация промпта с помощью RAG (если включено)
+            val finalPrompt = if (useRag && ragClient != null) {
+                logger.info("RAG enabled, augmenting prompt with context")
+                try {
+                    ragClient.augmentPromptWithContext(userPrompt)
+                } catch (e: Exception) {
+                    logger.error("RAG augmentation failed, using original prompt", e)
+                    userPrompt
+                }
+            } else {
+                if (useRag) {
+                    logger.warn("RAG requested but ragClient is not available")
+                }
+                userPrompt
+            }
+
+            // Шаг 2: Добавляем сообщение пользователя в историю
             val userMessage = ChatMessage(role = "user", content = userPrompt)
             _messageHistory.add(userMessage)
 
-            // Шаг 2: Подготавливаем контекст для запроса
+            // Шаг 3: Подготавливаем контекст для запроса (используем финальный промпт)
             val requestContext = RequestContext(
                 systemPrompt = config.systemPrompt,
-                messageHistory = _messageHistory,
+                messageHistory = _messageHistory.toMutableList().apply {
+                    // Заменяем последний user message на augmented версию
+                    if (finalPrompt != userPrompt) {
+                        removeLast()
+                        add(ChatMessage(role = "user", content = finalPrompt))
+                    }
+                },
                 temperature = config.temperature,
                 maxTokens = config.maxTokens
             )
 
-            // Шаг 3: Выполняем API-специфичный запрос (делегируем наследникам)
+            // Шаг 4: Выполняем API-специфичный запрос (делегируем наследникам)
             val startTime = System.currentTimeMillis()
             val apiResponse = executeApiRequest(requestContext)
             val executionTime = System.currentTimeMillis() - startTime
 
-            // Шаг 4: Добавляем ответ ассистента в историю
+            // Шаг 5: Добавляем ответ ассистента в историю
             val assistantMessage = ChatMessage(role = "assistant", content = apiResponse.answer)
             _messageHistory.add(assistantMessage)
 
             // Сохраняем обновленную историю в БД
             saveMessageHistory()
 
-            // Шаг 5: Формируем результат с метриками
+            // Шаг 6: Формируем результат с метриками
             val apiResult = ApiResult(
                 elapsedTime = executionTime,
                 promptTokens = apiResponse.promptTokens,

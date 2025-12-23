@@ -14,9 +14,10 @@ interface ApiClientInterface {
     /**
      * Отправка запроса к API
      * @param query текст запроса пользователя
+     * @param useRag использовать ли RAG (Retrieval-Augmented Generation)
      * @return ответ от API
      */
-    fun sendRequest(query: String): ApiResponse
+    fun sendRequest(query: String, useRag: Boolean = false): ApiResponse
 
     /**
      * Конфигурация клиента (иммутабельная)

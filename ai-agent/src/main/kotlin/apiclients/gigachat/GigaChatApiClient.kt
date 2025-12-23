@@ -7,6 +7,7 @@ import apiclients.config.ApiClientConfig
 import apiclients.gigachat.dto.*
 import database.repository.ClientConfigRepository
 import database.repository.MessageHistoryRepository
+import embedding.rag.RagClient
 import io.ktor.client.*
 import io.ktor.client.call.*
 import io.ktor.client.request.*
@@ -30,8 +31,9 @@ class GigaChatApiClient(
     clientName: String,
     configRepository: ClientConfigRepository,
     messageHistoryRepository: MessageHistoryRepository,
-    private val mcpToolsService: McpToolsService
-) : BaseApiClient(httpClient, apiClientConfig, clientName, configRepository, messageHistoryRepository) {
+    private val mcpToolsService: McpToolsService,
+    ragClient: RagClient? = null
+) : BaseApiClient(httpClient, apiClientConfig, clientName, configRepository, messageHistoryRepository, ragClient) {
 
     private val logger = LoggerFactory.getLogger(GigaChatApiClient::class.java)
 

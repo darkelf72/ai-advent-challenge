@@ -157,6 +157,27 @@ body {
     white-space: nowrap;
 }
 
+.use-rag-container {
+    display: flex;
+    align-items: center;
+    gap: 5px;
+}
+
+.use-rag-container input[type="checkbox"] {
+    width: 16px;
+    height: 16px;
+    cursor: pointer;
+    accent-color: #667eea;
+}
+
+.use-rag-container label {
+    font-size: 13px;
+    font-weight: bold;
+    color: #666;
+    cursor: pointer;
+    user-select: none;
+}
+
 .slider-container {
     flex: 1;
     display: flex;

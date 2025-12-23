@@ -6,6 +6,7 @@ import apiclients.StandardApiResponse
 import apiclients.config.ApiClientConfig
 import database.repository.ClientConfigRepository
 import database.repository.MessageHistoryRepository
+import embedding.rag.RagClient
 import io.ktor.client.*
 import io.ktor.client.call.*
 import io.ktor.client.request.*
@@ -27,8 +28,9 @@ class YandexApiClient(
     apiClientConfig: ApiClientConfig,
     clientName: String,
     configRepository: ClientConfigRepository,
-    messageHistoryRepository: MessageHistoryRepository
-) : BaseApiClient(httpClient, apiClientConfig, clientName, configRepository, messageHistoryRepository) {
+    messageHistoryRepository: MessageHistoryRepository,
+    ragClient: RagClient? = null
+) : BaseApiClient(httpClient, apiClientConfig, clientName, configRepository, messageHistoryRepository, ragClient) {
 
     private companion object {
         const val URL = "https://llm.api.cloud.yandex.net/foundationModels/v1/completion"

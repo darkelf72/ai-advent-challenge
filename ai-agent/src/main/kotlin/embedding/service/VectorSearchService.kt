@@ -17,7 +17,7 @@ class VectorSearchService(
 
     companion object {
         private const val TOP_K_RESULTS = 5  // Number of most relevant chunks
-        private const val SIMILARITY_THRESHOLD = 0.5f  // Minimum similarity threshold
+        private const val SIMILARITY_THRESHOLD = 0.65f  // Minimum similarity threshold (increased for better precision)
         private const val MAX_CONTEXT_TOKENS = 2000  // Maximum tokens in context
     }
 
@@ -54,6 +54,26 @@ class VectorSearchService(
                 .take(topK)
 
             logger.info("Found ${results.size} relevant chunks (threshold=$SIMILARITY_THRESHOLD)")
+
+            // Log top results with scores for debugging
+            if (results.isNotEmpty()) {
+                logger.info("Top results:")
+                results.forEachIndexed { index, scored ->
+                    logger.info("  ${index + 1}. [doc_${scored.chunk.id}] score=${String.format("%.4f", scored.score)} - ${scored.chunk.chunkText.take(100)}...")
+                }
+            }
+
+            // Also log chunks that were close but didn't make the cut
+            val almostMatches = scoredChunks
+                .filter { it.score < SIMILARITY_THRESHOLD && it.score >= SIMILARITY_THRESHOLD - 0.1f }
+                .sortedByDescending { it.score }
+                .take(3)
+            if (almostMatches.isNotEmpty()) {
+                logger.debug("Almost matched (below threshold):")
+                almostMatches.forEach { scored ->
+                    logger.debug("  [doc_${scored.chunk.id}] score=${String.format("%.4f", scored.score)} - ${scored.chunk.chunkText.take(100)}...")
+                }
+            }
 
             return results
         } catch (e: Exception) {

@@ -142,7 +142,7 @@ class DocumentEmbeddingService(
 
     /**
      * Split text into chunks with overlap
-     * Uses word-based splitting with token estimation
+     * Uses sentence and paragraph-aware splitting for better semantic coherence
      */
     private fun splitIntoChunks(
         text: String,
@@ -151,43 +151,85 @@ class DocumentEmbeddingService(
     ): List<TextChunk> {
         val chunks = mutableListOf<TextChunk>()
 
-        // Split by whitespace and filter empty strings
-        val words = text.split(Regex("\\s+")).filter { it.isNotEmpty() }
+        // Split into paragraphs (by double newline or single newline)
+        val paragraphs = text.split(Regex("\n+")).filter { it.trim().isNotEmpty() }
 
-        if (words.isEmpty()) {
-            logger.warn("No words found in text")
+        if (paragraphs.isEmpty()) {
+            logger.warn("No paragraphs found in text")
             return emptyList()
         }
 
-        // Approximate: 1 token ≈ 0.75 words (for English)
-        val wordsPerChunk = (maxTokens * 0.75).toInt()
-        val overlapWords = (overlapTokens * 0.75).toInt()
+        logger.debug("Found ${paragraphs.size} paragraphs in text")
 
-        logger.debug("Chunking: wordsPerChunk=$wordsPerChunk, overlapWords=$overlapWords, totalWords=${words.size}")
+        // For Russian: 1 token ≈ 0.5 words (Cyrillic uses more tokens)
+        val wordsPerChunk = (maxTokens * 0.5).toInt()
+        val overlapWords = (overlapTokens * 0.5).toInt()
 
-        var startIndex = 0
-        while (startIndex < words.size) {
-            val endIndex = minOf(startIndex + wordsPerChunk, words.size)
-            val chunkWords = words.subList(startIndex, endIndex)
-            val chunkText = chunkWords.joinToString(" ")
+        var currentChunk = StringBuilder()
+        var currentWordCount = 0
+        var previousParagraphs = mutableListOf<String>()
 
-            chunks.add(
-                TextChunk(
-                    text = chunkText,
-                    estimatedTokenCount = estimateTokenCount(chunkText)
-                )
-            )
+        for (paragraph in paragraphs) {
+            val paragraphWords = paragraph.split(Regex("\\s+")).filter { it.isNotEmpty() }.size
 
-            // Move to next chunk with overlap
-            startIndex += wordsPerChunk - overlapWords
+            // If adding this paragraph exceeds the limit, save current chunk and start new one
+            if (currentWordCount > 0 && currentWordCount + paragraphWords > wordsPerChunk) {
+                // Save current chunk
+                val chunkText = currentChunk.toString().trim()
+                if (chunkText.isNotEmpty()) {
+                    chunks.add(
+                        TextChunk(
+                            text = chunkText,
+                            estimatedTokenCount = estimateTokenCount(chunkText)
+                        )
+                    )
+                }
 
-            // Prevent infinite loop
-            if (startIndex >= words.size || wordsPerChunk <= overlapWords) {
-                break
+                // Start new chunk with overlap from previous paragraphs
+                currentChunk = StringBuilder()
+                currentWordCount = 0
+
+                // Add overlap: take last few paragraphs that fit in overlap size
+                val overlapParagraphs = mutableListOf<String>()
+                var overlapCount = 0
+                for (i in previousParagraphs.size - 1 downTo 0) {
+                    val pWords = previousParagraphs[i].split(Regex("\\s+")).filter { it.isNotEmpty() }.size
+                    if (overlapCount + pWords <= overlapWords) {
+                        overlapParagraphs.add(0, previousParagraphs[i])
+                        overlapCount += pWords
+                    } else {
+                        break
+                    }
+                }
+
+                // Add overlap paragraphs to new chunk
+                for (overlapPara in overlapParagraphs) {
+                    currentChunk.append(overlapPara).append("\n")
+                    currentWordCount += overlapPara.split(Regex("\\s+")).filter { it.isNotEmpty() }.size
+                }
+
+                previousParagraphs.clear()
+                previousParagraphs.addAll(overlapParagraphs)
             }
+
+            // Add current paragraph to chunk
+            currentChunk.append(paragraph).append("\n")
+            currentWordCount += paragraphWords
+            previousParagraphs.add(paragraph)
         }
 
-        logger.debug("Created ${chunks.size} chunks from ${words.size} words")
+        // Add the last chunk if any
+        val lastChunk = currentChunk.toString().trim()
+        if (lastChunk.isNotEmpty()) {
+            chunks.add(
+                TextChunk(
+                    text = lastChunk,
+                    estimatedTokenCount = estimateTokenCount(lastChunk)
+                )
+            )
+        }
+
+        logger.debug("Created ${chunks.size} chunks from ${paragraphs.size} paragraphs")
         return chunks
     }
 

@@ -35,8 +35,8 @@ class OllamaRagClient(
             val queryEmbedding = getEmbedding(userPrompt)
             logger.debug("Got query embedding, dimension=${queryEmbedding.size}")
 
-            // 2. Search for similar chunks
-            val similarChunks = vectorSearchService.searchSimilarChunks(queryEmbedding)
+            // 2. Search for similar chunks using hybrid search (embeddings + keywords)
+            val similarChunks = vectorSearchService.searchSimilarChunks(queryEmbedding, userPrompt)
 
             if (similarChunks.isEmpty()) {
                 logger.warn("No similar chunks found, returning original prompt")

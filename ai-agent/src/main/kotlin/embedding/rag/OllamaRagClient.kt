@@ -32,12 +32,20 @@ class OllamaRagClient(
         try {
             logger.info("Augmenting prompt with RAG context")
 
+            // Check if reranking is enabled
+            val useReranking = System.getenv("USE_RERANKING")?.toBoolean() ?: false
+            logger.debug("Reranking enabled: $useReranking")
+
             // 1. Get embedding for user query
             val queryEmbedding = getEmbedding(userPrompt)
             logger.debug("Got query embedding, dimension=${queryEmbedding.size}")
 
-            // 2. Search for similar chunks
-            val similarChunks = vectorSearchService.searchSimilarChunks(queryEmbedding)
+            // 2. Search for similar chunks with optional reranking
+            val similarChunks = vectorSearchService.searchSimilarChunks(
+                queryEmbedding = queryEmbedding,
+                queryText = userPrompt,  // Pass query text for reranking
+                useReranking = useReranking  // Enable/disable reranking via env variable
+            )
 
             if (similarChunks.isEmpty()) {
                 logger.warn("No similar chunks found, returning original prompt")

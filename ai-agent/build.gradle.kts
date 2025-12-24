@@ -54,7 +54,4 @@ application {
     mainClass.set("MainKt")
 }
 
-tasks.named<JavaExec>("run") {
-    environment("YANDEX_API_KEY", project.findProperty("yandexApiKey") as String)
-    environment("GIGA_CHAT_API_KEY", project.findProperty("gigaChatApiKey") as String)
-}
+// .env file is loaded automatically from root build.gradle.kts for all JavaExec tasks

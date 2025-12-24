@@ -11,6 +11,7 @@ import embedding.repository.SQLiteVectorStoreRepository
 import embedding.repository.VectorStoreRepository
 import embedding.service.DocumentEmbeddingService
 import embedding.service.VectorSearchService
+import embedding.service.RerankerService
 import embedding.rag.RagClient
 import embedding.rag.OllamaRagClient
 import io.ktor.client.*
@@ -61,8 +62,20 @@ val appModule = module {
 
     // Vector Search Service for RAG
     single<VectorSearchService> {
+        // Create RerankerService only if USE_RERANKING=true
+        val useReranking = System.getenv("USE_RERANKING")?.toBoolean() ?: false
+        val reranker = if (useReranking) {
+            RerankerService(
+                apiKey = System.getenv("HUGGINGFACE_API_KEY"),
+                model = System.getenv("RERANKER_MODEL") ?: "BAAI/bge-reranker-v2-m3"
+            )
+        } else {
+            null
+        }
+
         VectorSearchService(
-            vectorStoreRepository = get()
+            vectorStoreRepository = get(),
+            rerankerService = reranker
         )
     }
 

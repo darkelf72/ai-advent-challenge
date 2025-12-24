@@ -75,7 +75,7 @@ class VectorSearchService(
                     emptyList()
                 } else {
                     // Apply reranking
-                    val rerankedResults = rerankerService.rerank(queryText, candidatesForReranking)
+                    val rerankedResults = rerankerService.rerankWithLexicalMatch(queryText, candidatesForReranking)
 
                     // Take final top K
                     rerankedResults.take(topK)

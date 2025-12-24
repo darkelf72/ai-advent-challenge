@@ -36,7 +36,8 @@ class RerankerService(
     }
 
     companion object {
-        private const val HUGGINGFACE_API_URL = "https://router.huggingface.co/models"
+        private const val HUGGINGFACE_API_URL = "https://router.huggingface.co/hf-inference/models"
+//        private const val HUGGINGFACE_API_URL = "https://api-inference.huggingface.co/models"
         private const val RERANK_THRESHOLD = 0.5f  // Minimum reranker score to keep a result
     }
 

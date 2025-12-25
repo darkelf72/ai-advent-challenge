@@ -41,7 +41,8 @@ class SQLiteVectorStoreRepository : VectorStoreRepository {
         fileHash: String,
         fileSizeBytes: Int,
         totalChunks: Int,
-        embeddingModel: String
+        embeddingModel: String,
+        name: String
     ): Int {
         return try {
             transaction(db) {
@@ -53,11 +54,12 @@ class SQLiteVectorStoreRepository : VectorStoreRepository {
                     it[DocumentsTable.fileSizeBytes] = fileSizeBytes
                     it[DocumentsTable.totalChunks] = totalChunks
                     it[DocumentsTable.embeddingModel] = embeddingModel
+                    it[DocumentsTable.name] = name
                     it[createdAt] = now
                     it[updatedAt] = now
                 }[DocumentsTable.id]
             }.also {
-                logger.info("Created document: id=$it, fileName=$fileName, chunks=$totalChunks")
+                logger.info("Created document: id=$it, fileName=$fileName, name=$name, chunks=$totalChunks")
             }
         } catch (e: Exception) {
             logger.error("Failed to create document: $fileName", e)
@@ -112,7 +114,9 @@ class SQLiteVectorStoreRepository : VectorStoreRepository {
     override fun getChunksByDocumentId(documentId: Int): List<DocumentChunk> {
         return try {
             transaction(db) {
-                DocumentChunksTable.selectAll()
+                DocumentChunksTable
+                    .join(DocumentsTable, JoinType.INNER, DocumentChunksTable.documentId, DocumentsTable.id)
+                    .selectAll()
                     .where { DocumentChunksTable.documentId eq documentId }
                     .orderBy(DocumentChunksTable.chunkIndex to SortOrder.ASC)
                     .map { rowToDocumentChunk(it) }
@@ -147,6 +151,7 @@ class SQLiteVectorStoreRepository : VectorStoreRepository {
             fileSizeBytes = row[DocumentsTable.fileSizeBytes],
             totalChunks = row[DocumentsTable.totalChunks],
             embeddingModel = row[DocumentsTable.embeddingModel],
+            name = row[DocumentsTable.name],
             createdAt = row[DocumentsTable.createdAt],
             updatedAt = row[DocumentsTable.updatedAt]
         )
@@ -163,7 +168,8 @@ class SQLiteVectorStoreRepository : VectorStoreRepository {
             chunkText = row[DocumentChunksTable.chunkText],
             embedding = embedding,
             tokenCount = row[DocumentChunksTable.tokenCount],
-            createdAt = row[DocumentChunksTable.createdAt]
+            createdAt = row[DocumentChunksTable.createdAt],
+            documentName = row[DocumentsTable.name]
         )
     }
 

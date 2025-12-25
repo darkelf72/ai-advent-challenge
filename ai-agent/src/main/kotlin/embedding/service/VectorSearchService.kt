@@ -147,11 +147,12 @@ class VectorSearchService(
 
     /**
      * Format chunks as context block
-     * Format: [doc_ID]\nText\n\n[doc_ID]\nText...
+     * Format: [doc_ID | name]\nText\n\n[doc_ID | name]\nText...
      */
     private fun formatContext(scoredChunks: List<ScoredChunk>): String {
         return scoredChunks.joinToString("\n\n") { scored ->
-            "[doc_${scored.chunk.id}]\n${scored.chunk.chunkText}"
+            "[doc_${scored.chunk.id} | ${scored.chunk.documentName}]\n${scored.chunk.chunkText}"
+//            "[doc_${scored.chunk.id} | \"${scored.chunk.documentName}\"]\n${scored.chunk.chunkText}"
         }
     }
 
@@ -173,7 +174,7 @@ class VectorSearchService(
             - Используй только факты из контекста
             - Не добавляй информацию от себя
             - В конце ответа добавь раздел "Источники"
-            - В разделе "Источники" укажи ID использованных фрагментов
+            - В разделе "Источники" укажи ID и имя документа для каждого использованного фрагмента в формате: [doc_ID | имя_документа]  
         """.trimIndent()
     }
 

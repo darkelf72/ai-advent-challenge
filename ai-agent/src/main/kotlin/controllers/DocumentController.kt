@@ -48,11 +48,13 @@ class DocumentController(
         try {
             val multipart = call.receiveMultipart()
             var file: File? = null
+            var originalFileName: String? = null
 
             multipart.forEachPart { part ->
                 when (part) {
                     is PartData.FileItem -> {
                         val fileName = part.originalFileName ?: "unknown"
+                        originalFileName = fileName
                         logger.info("Processing file upload: $fileName")
 
                         // Validate file name
@@ -124,7 +126,7 @@ class DocumentController(
             // Start processing in background
             val job = CoroutineScope(Dispatchers.IO).launch {
                 try {
-                    val result = embeddingService.processDocument(file) { current, total ->
+                    val result = embeddingService.processDocument(file, originalFileName) { current, total ->
                         progressMap[requestId] = ProgressInfo(
                             current = current,
                             total = total,

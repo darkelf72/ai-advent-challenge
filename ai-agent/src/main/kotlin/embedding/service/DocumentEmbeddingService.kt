@@ -30,11 +30,13 @@ class DocumentEmbeddingService(
     /**
      * Process document: load, chunk, embed, and store
      * @param file File to process
+     * @param originalFileName Original filename without UUID prefix (optional, defaults to file.name)
      * @param onProgress Callback for progress updates (current, total)
      * @return Result with document ID or error
      */
     suspend fun processDocument(
         file: File,
+        originalFileName: String? = null,
         onProgress: suspend (Int, Int) -> Unit
     ): Result<Int> = withContext(Dispatchers.IO) {
         try {
@@ -66,7 +68,8 @@ class DocumentEmbeddingService(
                 fileHash = fileHash,
                 fileSizeBytes = file.length().toInt(),
                 totalChunks = chunks.size,
-                embeddingModel = EMBEDDING_MODEL
+                embeddingModel = EMBEDDING_MODEL,
+                name = originalFileName ?: file.name
             )
 
             logger.info("Created document record with id=$documentId")

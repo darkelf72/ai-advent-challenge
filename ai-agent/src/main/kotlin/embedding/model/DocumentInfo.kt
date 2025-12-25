@@ -11,6 +11,7 @@ data class DocumentInfo(
     val fileSizeBytes: Int,
     val totalChunks: Int,
     val embeddingModel: String,
+    val name: String,
     val createdAt: Long,
     val updatedAt: Long
 )

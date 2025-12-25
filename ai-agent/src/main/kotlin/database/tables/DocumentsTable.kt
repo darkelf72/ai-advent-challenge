@@ -13,6 +13,7 @@ object DocumentsTable : Table("documents") {
     val fileSizeBytes = integer("file_size_bytes")
     val totalChunks = integer("total_chunks")
     val embeddingModel = varchar("embedding_model", 100)
+    val name = varchar("name", 255)
     val createdAt = long("created_at")
     val updatedAt = long("updated_at")
 

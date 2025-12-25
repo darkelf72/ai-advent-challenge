@@ -33,7 +33,8 @@ interface VectorStoreRepository {
         fileHash: String,
         fileSizeBytes: Int,
         totalChunks: Int,
-        embeddingModel: String
+        embeddingModel: String,
+        name: String
     ): Int
 
     /**

@@ -23,7 +23,7 @@ class DocumentEmbeddingService(
 //        private const val EMBEDDING_MODEL = "nomic-embed-text"
         private const val EMBEDDING_MODEL = "zylonai/multilingual-e5-large"
         private const val MAX_TOKENS_PER_CHUNK = 500
-        private const val OVERLAP_TOKENS = 50
+        private const val OVERLAP_TOKENS = 100
         private const val MAX_FILE_SIZE_BYTES = 10 * 1024 * 1024 // 10 MB
     }
 

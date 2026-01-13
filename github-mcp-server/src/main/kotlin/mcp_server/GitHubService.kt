@@ -20,6 +20,11 @@ class GitHubService(
     private val logger = LoggerFactory.getLogger(GitHubService::class.java)
     private val baseUrl = "https://api.github.com"
 
+    private val json = Json {
+        ignoreUnknownKeys = true
+        isLenient = true
+    }
+
     @Serializable
     data class PullRequest(
         val number: Int,
@@ -88,7 +93,7 @@ class GitHubService(
                 return "Error: ${response.status.value} - ${response.bodyAsText()}"
             }
 
-            val pr: PullRequest = Json.decodeFromString(response.bodyAsText())
+            val pr: PullRequest = json.decodeFromString(response.bodyAsText())
 
             buildString {
                 appendLine("=== Pull Request #${pr.number} ===")
@@ -139,7 +144,7 @@ class GitHubService(
                 return "Error: ${response.status.value} - ${response.bodyAsText()}"
             }
 
-            val files: List<PullRequestFile> = Json.decodeFromString(response.bodyAsText())
+            val files: List<PullRequestFile> = json.decodeFromString(response.bodyAsText())
 
             buildString {
                 appendLine("=== Changed Files (${files.size}) ===")

@@ -1,0 +1,35 @@
+# Multi-stage build for ai-agent module
+FROM gradle:8.11-jdk21-alpine AS builder
+
+WORKDIR /app
+
+# Copy gradle files for dependency caching
+COPY build.gradle.kts settings.gradle.kts gradle.properties ./
+COPY ai-agent/build.gradle.kts ./ai-agent/
+
+# Download dependencies
+RUN gradle ai-agent:dependencies --no-daemon || true
+
+# Copy source code (includes resources with truststore.jks)
+COPY ai-agent ./ai-agent
+
+# Build the application
+RUN gradle ai-agent:installDist --no-daemon
+
+# Runtime stage
+FROM eclipse-temurin:21-jre-alpine
+
+WORKDIR /app
+
+# Copy built application from builder stage
+COPY --from=builder /app/ai-agent/build/install/ai-agent /app
+
+# Expose port
+EXPOSE 9999
+
+# Set environment variables for API keys
+ENV YANDEX_API_KEY=""
+ENV GIGA_CHAT_API_KEY=""
+
+# Run the application with system properties
+CMD ["sh", "-c", "/app/bin/ai-agent -DyandexApiKey=${YANDEX_API_KEY} -DgigaChatApiKey=${GIGA_CHAT_API_KEY}"]

@@ -1,0 +1,34 @@
+# Multi-stage build for local-mcp-server module
+FROM gradle:8.11-jdk21-alpine AS builder
+
+WORKDIR /app
+
+# Copy gradle files for dependency caching
+COPY build.gradle.kts settings.gradle.kts gradle.properties ./
+COPY local-mcp-server/build.gradle.kts ./local-mcp-server/
+
+# Download dependencies
+RUN gradle local-mcp-server:dependencies --no-daemon || true
+
+# Copy source code
+COPY local-mcp-server ./local-mcp-server
+
+# Build the application
+RUN gradle local-mcp-server:installDist --no-daemon
+
+# Runtime stage
+FROM eclipse-temurin:21-jre-alpine
+
+WORKDIR /app
+
+# Copy built application from builder stage
+COPY --from=builder /app/local-mcp-server/build/install/local-mcp-server /app
+
+# Expose port
+EXPOSE 8080
+
+# Set working directory for the application
+WORKDIR /app
+
+# Run the application
+CMD ["/app/bin/local-mcp-server"]

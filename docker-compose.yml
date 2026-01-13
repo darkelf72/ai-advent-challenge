@@ -1,0 +1,119 @@
+services:
+  # DB MCP Server
+  db-mcp-server:
+    build:
+      context: .
+      dockerfile: Dockerfile.db-mcp-server
+    container_name: db-mcp-server
+    ports:
+      - "8081:8081"
+    volumes:
+      - db-mcp-data:/app/data
+    networks:
+      - ai-network
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "wget", "--quiet", "--tries=1", "--spider", "http://localhost:8081/health"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 30s
+
+  # HTTP MCP Server
+  http-mcp-server:
+    build:
+      context: .
+      dockerfile: Dockerfile.http-mcp-server
+    container_name: http-mcp-server
+    ports:
+      - "8082:8082"
+    networks:
+      - ai-network
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "wget", "--quiet", "--tries=1", "--spider", "http://localhost:8082/health"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 30s
+
+  # Local MCP Server
+  local-mcp-server:
+    build:
+      context: .
+      dockerfile: Dockerfile.local-mcp-server
+    container_name: local-mcp-server
+    ports:
+      - "8080:8080"
+    networks:
+      - ai-network
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "wget", "--quiet", "--tries=1", "--spider", "http://localhost:8080/health"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 30s
+
+  # Git MCP Server
+  git-mcp-server:
+    build:
+      context: .
+      dockerfile: Dockerfile.git-mcp-server
+    container_name: git-mcp-server
+    ports:
+      - "8083:8083"
+    volumes:
+      - ./.git:/app/.git:ro  # Mount .git directory as read-only
+    environment:
+      - GIT_REPOSITORY_PATH=.  # Текущий каталог (где смонтирован .git)
+    networks:
+      - ai-network
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "wget", "--quiet", "--tries=1", "--spider", "http://localhost:8083/health"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 30s
+
+  # AI Agent - Main application
+  ai-agent:
+    build:
+      context: .
+      dockerfile: Dockerfile.ai-agent
+    container_name: ai-agent
+    ports:
+      - "9999:9999"
+    environment:
+      - YANDEX_API_KEY=${YANDEX_API_KEY:-}
+      - GIGA_CHAT_API_KEY=${GIGA_CHAT_API_KEY:-}
+      - LOCAL_MCP_SERVER_URL=http://local-mcp-server:8080
+      - DB_MCP_SERVER_URL=http://db-mcp-server:8081
+      - HTTP_MCP_SERVER_URL=http://http-mcp-server:8082
+      - GIT_MCP_SERVER_URL=http://git-mcp-server:8083
+    networks:
+      - ai-network
+    depends_on:
+      local-mcp-server:
+        condition: service_healthy
+      db-mcp-server:
+        condition: service_healthy
+      http-mcp-server:
+        condition: service_healthy
+      git-mcp-server:
+        condition: service_healthy
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "wget", "--quiet", "--tries=1", "--spider", "http://localhost:9999/"]
+      interval: 15s
+      timeout: 10s
+      retries: 3
+      start_period: 40s
+
+networks:
+  ai-network:
+    driver: bridge
+
+volumes:
+  db-mcp-data:

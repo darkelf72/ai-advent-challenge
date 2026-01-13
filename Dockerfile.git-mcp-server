@@ -1,0 +1,33 @@
+# Dockerfile for Git MCP Server
+FROM gradle:8.5-jdk21 AS build
+
+WORKDIR /app
+
+# Copy Gradle files
+COPY build.gradle.kts settings.gradle.kts gradle.properties ./
+COPY gradle ./gradle
+
+# Copy git-mcp-server module source
+COPY git-mcp-server ./git-mcp-server
+
+# Build git-mcp-server
+RUN gradle :git-mcp-server:build -x test --no-daemon
+
+# Runtime stage
+FROM eclipse-temurin:21-jre
+
+WORKDIR /app
+
+# Copy build artifacts
+COPY --from=build /app/git-mcp-server/build/libs/*.jar app.jar
+
+# Install git (required for JGit to work with actual git repos)
+RUN apt-get update && \
+    apt-get install -y git && \
+    rm -rf /var/lib/apt/lists/*
+
+# Expose port
+EXPOSE 8083
+
+# Run the application
+CMD ["java", "-jar", "app.jar"]

@@ -1,7 +1,10 @@
 package embedding.service
 
 import embedding.OllamaClient
-import embedding.model.TextChunk
+import embedding.OllamaException
+import embedding.chunking.ChunkingStrategyFactory
+import embedding.chunking.DocumentMetadata
+import embedding.chunking.UnsupportedFileTypeException
 import embedding.repository.VectorStoreRepository
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
@@ -20,10 +23,9 @@ class DocumentEmbeddingService(
     private val logger = LoggerFactory.getLogger(this::class.java)
 
     companion object {
-//        private const val EMBEDDING_MODEL = "nomic-embed-text"
-        private const val EMBEDDING_MODEL = "zylonai/multilingual-e5-large"
-        private const val MAX_TOKENS_PER_CHUNK = 500
-        private const val OVERLAP_TOKENS = 100
+        private const val EMBEDDING_MODEL = "nomic-embed-text"
+        // Note: Actual chunking parameters are now controlled by ChunkingStrategyFactory
+        // These constants remain for reference and file size validation
         private const val MAX_FILE_SIZE_BYTES = 10 * 1024 * 1024 // 10 MB
     }
 
@@ -57,11 +59,27 @@ class DocumentEmbeddingService(
                 vectorStoreRepository.deleteDocument(existingDoc.id)
             }
 
-            // 4. Split into chunks
-            val chunks = splitIntoChunks(fileContent, MAX_TOKENS_PER_CHUNK, OVERLAP_TOKENS)
-            logger.info("Split document into ${chunks.size} chunks")
+            // 4. Determine file extension and get appropriate chunking strategy
+            val fileExtension = file.extension
+            val chunkingStrategy = ChunkingStrategyFactory.getStrategy(fileExtension)
 
-            // 5. Create document record
+            val metadata = DocumentMetadata(
+                fileName = file.name,
+                fileExtension = fileExtension,
+                originalName = originalFileName
+            )
+
+            // 5. Split into chunks using strategy
+            val chunks = chunkingStrategy.splitIntoChunks(fileContent, metadata)
+
+            // Log chunk statistics
+            val avgTokens = if (chunks.isNotEmpty()) chunks.map { it.estimatedTokenCount }.average() else 0.0
+            val maxTokens = chunks.maxOfOrNull { it.estimatedTokenCount } ?: 0
+            val minTokens = chunks.minOfOrNull { it.estimatedTokenCount } ?: 0
+            logger.info("Split document into ${chunks.size} chunks using ${chunkingStrategy::class.simpleName}")
+            logger.info("Chunk token statistics: min=$minTokens, max=$maxTokens, avg=${avgTokens.toInt()}")
+
+            // 6. Create document record
             val documentId = vectorStoreRepository.createDocument(
                 fileName = file.name,
                 filePath = file.absolutePath,
@@ -74,17 +92,21 @@ class DocumentEmbeddingService(
 
             logger.info("Created document record with id=$documentId")
 
-            // 6. Process each chunk
+            // 7. Process each chunk
             try {
                 chunks.forEachIndexed { index, chunk ->
-                    logger.debug("Processing chunk ${index + 1}/${chunks.size}")
+                    val wordCount = chunk.text.split(Regex("\\s+")).filter { it.isNotEmpty() }.size
+                    logger.debug("Processing chunk ${index + 1}/${chunks.size}: ${chunk.estimatedTokenCount} tokens (~$wordCount words)")
 
                     // Create embedding via OllamaClient
                     val embedding = try {
                         ollamaClient.embedding(EMBEDDING_MODEL, chunk.text)
+                    } catch (e: OllamaException) {
+                        logger.error("Ollama error for chunk $index: ${e.message}", e)
+                        throw EmbeddingException("Ollama error for chunk $index: ${e.message}. Please ensure Ollama is running and model '$EMBEDDING_MODEL' is loaded.", e)
                     } catch (e: Exception) {
                         logger.error("Failed to create embedding for chunk $index", e)
-                        throw EmbeddingException("Failed to create embedding for chunk $index", e)
+                        throw EmbeddingException("Failed to create embedding for chunk $index: ${e.message}", e)
                     }
 
                     // Save chunk with embedding
@@ -115,6 +137,12 @@ class DocumentEmbeddingService(
                 throw e
             }
 
+        } catch (e: UnsupportedFileTypeException) {
+            logger.error("Unsupported file type: ${file.name}", e)
+            Result.failure(e)
+        } catch (e: OllamaException) {
+            logger.error("Ollama error processing document: ${file.name}", e)
+            Result.failure(e)
         } catch (e: Exception) {
             logger.error("Error processing document: ${file.name}", e)
             Result.failure(e)
@@ -142,108 +170,6 @@ class DocumentEmbeddingService(
         if (file.length() == 0L) {
             throw EmptyFileException("File is empty: ${file.name}")
         }
-    }
-
-    /**
-     * Split text into chunks with overlap
-     * Uses sentence and paragraph-aware splitting for better semantic coherence
-     */
-    private fun splitIntoChunks(
-        text: String,
-        maxTokens: Int,
-        overlapTokens: Int
-    ): List<TextChunk> {
-        val chunks = mutableListOf<TextChunk>()
-
-        // Split into paragraphs (by double newline or single newline)
-        val paragraphs = text.split(Regex("\n+")).filter { it.trim().isNotEmpty() }
-
-        if (paragraphs.isEmpty()) {
-            logger.warn("No paragraphs found in text")
-            return emptyList()
-        }
-
-        logger.debug("Found ${paragraphs.size} paragraphs in text")
-
-        // For Russian: 1 token ≈ 0.5 words (Cyrillic uses more tokens)
-        val wordsPerChunk = (maxTokens * 0.5).toInt()
-        val overlapWords = (overlapTokens * 0.5).toInt()
-
-        var currentChunk = StringBuilder()
-        var currentWordCount = 0
-        var previousParagraphs = mutableListOf<String>()
-
-        for (paragraph in paragraphs) {
-            val paragraphWords = paragraph.split(Regex("\\s+")).filter { it.isNotEmpty() }.size
-
-            // If adding this paragraph exceeds the limit, save current chunk and start new one
-            if (currentWordCount > 0 && currentWordCount + paragraphWords > wordsPerChunk) {
-                // Save current chunk
-                val chunkText = currentChunk.toString().trim()
-                if (chunkText.isNotEmpty()) {
-                    chunks.add(
-                        TextChunk(
-                            text = chunkText,
-                            estimatedTokenCount = estimateTokenCount(chunkText)
-                        )
-                    )
-                }
-
-                // Start new chunk with overlap from previous paragraphs
-                currentChunk = StringBuilder()
-                currentWordCount = 0
-
-                // Add overlap: take last few paragraphs that fit in overlap size
-                val overlapParagraphs = mutableListOf<String>()
-                var overlapCount = 0
-                for (i in previousParagraphs.size - 1 downTo 0) {
-                    val pWords = previousParagraphs[i].split(Regex("\\s+")).filter { it.isNotEmpty() }.size
-                    if (overlapCount + pWords <= overlapWords) {
-                        overlapParagraphs.add(0, previousParagraphs[i])
-                        overlapCount += pWords
-                    } else {
-                        break
-                    }
-                }
-
-                // Add overlap paragraphs to new chunk
-                for (overlapPara in overlapParagraphs) {
-                    currentChunk.append(overlapPara).append("\n")
-                    currentWordCount += overlapPara.split(Regex("\\s+")).filter { it.isNotEmpty() }.size
-                }
-
-                previousParagraphs.clear()
-                previousParagraphs.addAll(overlapParagraphs)
-            }
-
-            // Add current paragraph to chunk
-            currentChunk.append(paragraph).append("\n")
-            currentWordCount += paragraphWords
-            previousParagraphs.add(paragraph)
-        }
-
-        // Add the last chunk if any
-        val lastChunk = currentChunk.toString().trim()
-        if (lastChunk.isNotEmpty()) {
-            chunks.add(
-                TextChunk(
-                    text = lastChunk,
-                    estimatedTokenCount = estimateTokenCount(lastChunk)
-                )
-            )
-        }
-
-        logger.debug("Created ${chunks.size} chunks from ${paragraphs.size} paragraphs")
-        return chunks
-    }
-
-    /**
-     * Estimate token count from text
-     * Simple heuristic: count words and divide by 0.75
-     */
-    private fun estimateTokenCount(text: String): Int {
-        val wordCount = text.split(Regex("\\s+")).filter { it.isNotEmpty() }.size
-        return (wordCount / 0.75).toInt()
     }
 
     /**

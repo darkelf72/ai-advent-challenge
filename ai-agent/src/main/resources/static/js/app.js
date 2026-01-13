@@ -693,10 +693,10 @@ mcpToolsModal.addEventListener('click', (e) => {
         currentFileName = file.name;
 
         // Validate file type
-        if (!file.name.endsWith('.txt')) {
-            alert('Only .txt files are supported');
-            return;
-        }
+//        if (!file.name.endsWith('.txt') || !file.name.endsWith('.md') ) {
+//            alert('Only .txt, .md files are supported');
+//            return;
+//        }
 
         // Validate file size (10 MB)
         const maxSize = 10 * 1024 * 1024;

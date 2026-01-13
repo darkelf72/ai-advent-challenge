@@ -73,7 +73,7 @@ fun HTML.chatPage() {
                     input {
                         type = InputType.file
                         id = "documentFileInput"
-                        accept = ".txt"
+                        accept = ".txt,.md"
                         attributes["style"] = "display: none;"
                     }
                 }

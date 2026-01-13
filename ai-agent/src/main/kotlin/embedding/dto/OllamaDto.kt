@@ -10,5 +10,6 @@ data class EmbeddingRequest(
 
 @Serializable
 data class EmbeddingResponse(
-    val embedding: List<Float>
+    val embedding: List<Float>? = null,
+    val error: String? = null
 )

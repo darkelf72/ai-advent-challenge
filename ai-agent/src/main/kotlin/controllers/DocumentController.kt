@@ -1,6 +1,7 @@
 package controllers
 
 import dto.ResponseDto
+import embedding.chunking.ChunkingStrategyFactory
 import embedding.service.DocumentEmbeddingService
 import io.ktor.http.*
 import io.ktor.http.content.*
@@ -57,19 +58,25 @@ class DocumentController(
                         originalFileName = fileName
                         logger.info("Processing file upload: $fileName")
 
-                        // Validate file name
-                        if (!fileName.endsWith(".txt")) {
+                        // Validate file extension
+                        val extension = fileName.substringAfterLast('.', "").lowercase()
+                        val supportedExtensions = ChunkingStrategyFactory.getSupportedExtensions()
+
+                        if (extension !in supportedExtensions) {
+                            val supportedFormats = supportedExtensions.joinToString { ".$it" }
                             call.respond(
                                 HttpStatusCode.BadRequest,
                                 ResponseDto(
                                     success = false,
-                                    message = "Only .txt files are supported",
+                                    message = "Unsupported file type. Supported types: $supportedFormats",
                                     data = null
                                 )
                             )
                             part.dispose()
                             return@forEachPart
                         }
+
+                        logger.info("File extension validated: .$extension")
 
                         // Save uploaded file to temp location
                         val tempFile = File(UPLOAD_DIR, "${requestId}_$fileName")

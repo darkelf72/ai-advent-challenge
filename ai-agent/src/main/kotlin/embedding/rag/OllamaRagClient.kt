@@ -15,8 +15,7 @@ class OllamaRagClient(
     private val logger = LoggerFactory.getLogger(this::class.java)
 
     companion object {
-//        private const val EMBEDDING_MODEL = "nomic-embed-text"
-        private const val EMBEDDING_MODEL = "zylonai/multilingual-e5-large"
+        private const val EMBEDDING_MODEL = "nomic-embed-text"
     }
 
     override suspend fun getEmbedding(text: String): List<Float> {

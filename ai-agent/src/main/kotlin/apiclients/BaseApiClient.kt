@@ -110,42 +110,50 @@ abstract class BaseApiClient(
     /**
      * Синхронная обертка над асинхронным запросом
      */
-    override fun sendRequest(query: String, useRag: Boolean): ApiResponse = runBlocking {
-        sendRequestAsync(query, useRag)
+    override fun sendRequest(query: String): ApiResponse = runBlocking {
+        sendRequestAsync(query)
     }
 
     /**
      * Template Method - определяет общий алгоритм выполнения запроса.
      * Вызывает abstract методы для специфичной логики конкретного API.
      */
-    private suspend fun sendRequestAsync(userPrompt: String, useRag: Boolean): ApiResponse {
+    private suspend fun sendRequestAsync(userPrompt: String): ApiResponse {
         return try {
-            // Шаг 1: Аугментация промпта с помощью RAG (если включено)
+            // Шаг 1: Проверяем наличие команды /help и определяем запрос для RAG
+            val useRag = userPrompt.startsWith("/help ")
+            val actualQuery = if (useRag) {
+                userPrompt.substring("/help ".length).trim()
+            } else {
+                userPrompt
+            }
+
+            // Шаг 2: Аугментация промпта с помощью RAG (если команда /help присутствует)
             val finalPrompt = if (useRag && ragClient != null) {
-                logger.info("RAG enabled, augmenting prompt with context")
+                logger.info("RAG enabled (via /help command), augmenting prompt with context")
                 try {
-                    ragClient.augmentPromptWithContext(userPrompt)
+                    ragClient.augmentPromptWithContext(actualQuery)
                 } catch (e: Exception) {
                     logger.error("RAG augmentation failed, using original prompt", e)
-                    userPrompt
+                    actualQuery
                 }
             } else {
                 if (useRag) {
                     logger.warn("RAG requested but ragClient is not available")
                 }
-                userPrompt
+                actualQuery
             }
 
-            // Шаг 2: Добавляем сообщение пользователя в историю
-            val userMessage = ChatMessage(role = "user", content = userPrompt)
+            // Шаг 3: Добавляем сообщение пользователя в историю (без команды /help)
+            val userMessage = ChatMessage(role = "user", content = actualQuery)
             _messageHistory.add(userMessage)
 
-            // Шаг 3: Подготавливаем контекст для запроса (используем финальный промпт)
+            // Шаг 4: Подготавливаем контекст для запроса (используем финальный промпт)
             val requestContext = RequestContext(
                 systemPrompt = config.systemPrompt,
                 messageHistory = _messageHistory.toMutableList().apply {
                     // Заменяем последний user message на augmented версию
-                    if (finalPrompt != userPrompt) {
+                    if (finalPrompt != actualQuery) {
                         removeLast()
                         add(ChatMessage(role = "user", content = finalPrompt))
                     }
@@ -154,19 +162,19 @@ abstract class BaseApiClient(
                 maxTokens = config.maxTokens
             )
 
-            // Шаг 4: Выполняем API-специфичный запрос (делегируем наследникам)
+            // Шаг 5: Выполняем API-специфичный запрос (делегируем наследникам)
             val startTime = System.currentTimeMillis()
             val apiResponse = executeApiRequest(requestContext)
             val executionTime = System.currentTimeMillis() - startTime
 
-            // Шаг 5: Добавляем ответ ассистента в историю
+            // Шаг 6: Добавляем ответ ассистента в историю
             val assistantMessage = ChatMessage(role = "assistant", content = apiResponse.answer)
             _messageHistory.add(assistantMessage)
 
             // Сохраняем обновленную историю в БД
             saveMessageHistory()
 
-            // Шаг 6: Формируем результат с метриками
+            // Шаг 7: Формируем результат с метриками
             val apiResult = ApiResult(
                 elapsedTime = executionTime,
                 promptTokens = apiResponse.promptTokens,

@@ -93,17 +93,6 @@ fun HTML.chatPage() {
                 }
 
                 div(classes = "temperature-slider-area") {
-                    div(classes = "use-rag-container") {
-                        input {
-                            type = InputType.checkBox
-                            id = "useRagCheckbox"
-                            name = "useRag"
-                        }
-                        label {
-                            htmlFor = "useRagCheckbox"
-                            +"Use RAG"
-                        }
-                    }
                     div(classes = "temperature-label") { +"Temperature:" }
                     div(classes = "slider-container") {
                         input {

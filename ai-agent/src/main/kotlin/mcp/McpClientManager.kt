@@ -16,11 +16,13 @@ class McpClientManager(
     private val httpMcpClient: Client,
     private val localMcpClient: Client,
     private val gitMcpClient: Client,
+    private val githubMcpClient: Client,
     private val mcpHttpClient: HttpClient,
     private val dbMcpServerUrl: String,
     private val httpMcpServerUrl: String,
     private val localMcpServerUrl: String,
-    private val gitMcpServerUrl: String
+    private val gitMcpServerUrl: String,
+    private val githubMcpServerUrl: String
 ) {
     private val logger = LoggerFactory.getLogger(McpClientManager::class.java)
 
@@ -28,6 +30,7 @@ class McpClientManager(
     private val httpMutex = Mutex()
     private val localMutex = Mutex()
     private val gitMutex = Mutex()
+    private val githubMutex = Mutex()
 
     @Volatile
     private var dbClientConnected = false
@@ -40,6 +43,9 @@ class McpClientManager(
 
     @Volatile
     private var gitClientConnected = false
+
+    @Volatile
+    private var githubClientConnected = false
 
     /**
      * Получает DB MCP клиент, подключаясь к серверу при необходимости
@@ -147,5 +153,32 @@ class McpClientManager(
             }
         }
         return gitMcpClient
+    }
+
+    /**
+     * Получает GitHub MCP клиент, подключаясь к серверу при необходимости
+     */
+    suspend fun getGithubClient(): Client? {
+        if (!githubClientConnected) {
+            githubMutex.withLock {
+                if (!githubClientConnected) {
+                    try {
+                        logger.info("Connecting to GitHub MCP server at $githubMcpServerUrl...")
+                        githubMcpClient.connect(
+                            transport = SseClientTransport(
+                                urlString = githubMcpServerUrl,
+                                client = mcpHttpClient
+                            )
+                        )
+                        githubClientConnected = true
+                        logger.info("Successfully connected to GitHub MCP server")
+                    } catch (e: Exception) {
+                        logger.error("Failed to connect to GitHub MCP server at $githubMcpServerUrl: ${e.message}")
+                        return null
+                    }
+                }
+            }
+        }
+        return githubMcpClient
     }
 }

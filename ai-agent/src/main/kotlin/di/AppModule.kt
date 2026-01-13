@@ -127,6 +127,16 @@ val appModule = module {
         )
     }
 
+    single<Client>(named("githubMcpClient")) {
+        Client(
+            clientInfo = Implementation(
+                name = "mcp-cli-client",
+                version = "1.0.0"
+            ),
+            options = ClientOptions()
+        )
+    }
+
     single<HttpClient>(named("mcpHttpClient")) {
         // Create HTTP client for SSE transport
         HttpClient(CIO) {
@@ -220,17 +230,20 @@ val appModule = module {
         val dbMcpServerUrl = System.getenv("DB_MCP_SERVER_URL") ?: "http://localhost:8081"
         val httpMcpServerUrl = System.getenv("HTTP_MCP_SERVER_URL") ?: "http://localhost:8082"
         val gitMcpServerUrl = System.getenv("GIT_MCP_SERVER_URL") ?: "http://localhost:8083"
+        val githubMcpServerUrl = System.getenv("GITHUB_MCP_SERVER_URL") ?: "http://localhost:8084"
 
         McpClientManager(
             dbMcpClient = get(named("dbMcpClient")),
             httpMcpClient = get(named("httpMcpClient")),
             localMcpClient = get(named("localMcpClient")),
             gitMcpClient = get(named("gitMcpClient")),
+            githubMcpClient = get(named("githubMcpClient")),
             mcpHttpClient = get(named("mcpHttpClient")),
             dbMcpServerUrl = dbMcpServerUrl,
             httpMcpServerUrl = httpMcpServerUrl,
             localMcpServerUrl = localMcpServerUrl,
-            gitMcpServerUrl = gitMcpServerUrl
+            gitMcpServerUrl = gitMcpServerUrl,
+            githubMcpServerUrl = githubMcpServerUrl
         )
     }
 

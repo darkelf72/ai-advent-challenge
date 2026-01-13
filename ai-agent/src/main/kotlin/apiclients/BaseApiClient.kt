@@ -120,9 +120,18 @@ abstract class BaseApiClient(
      */
     private suspend fun sendRequestAsync(userPrompt: String): ApiResponse {
         return try {
+            // Шаг 0: Проверяем запрос на code review
+            val isCodeReview = isCodeReviewRequest(userPrompt)
+            val codeReviewSystemPrompt = if (isCodeReview) {
+                logger.info("Code review request detected, loading code review system prompt and activating RAG")
+                loadCodeReviewPrompt()
+            } else {
+                null
+            }
+
             // Шаг 1: Проверяем наличие команды /help и определяем запрос для RAG
-            val useRag = userPrompt.startsWith("/help ")
-            val actualQuery = if (useRag) {
+            val useRag = userPrompt.startsWith("/help ") || isCodeReview // RAG всегда активен для code review
+            val actualQuery = if (userPrompt.startsWith("/help ")) {
                 userPrompt.substring("/help ".length).trim()
             } else {
                 userPrompt
@@ -148,9 +157,9 @@ abstract class BaseApiClient(
             val userMessage = ChatMessage(role = "user", content = actualQuery)
             _messageHistory.add(userMessage)
 
-            // Шаг 4: Подготавливаем контекст для запроса (используем финальный промпт)
+            // Шаг 4: Подготавливаем контекст для запроса (используем финальный промпт и code review system prompt если есть)
             val requestContext = RequestContext(
-                systemPrompt = config.systemPrompt,
+                systemPrompt = codeReviewSystemPrompt ?: config.systemPrompt,
                 messageHistory = _messageHistory.toMutableList().apply {
                     // Заменяем последний user message на augmented версию
                     if (finalPrompt != actualQuery) {
@@ -186,6 +195,35 @@ abstract class BaseApiClient(
             ApiResponse(message = apiResponse.answer, result = apiResult)
         } catch (e: Exception) {
             handleError(e)
+        }
+    }
+
+    /**
+     * Проверяет является ли запрос запросом на code review.
+     * Распознает фразы вида: "сделай ревью", "провести ревью", "review", и наличие ссылки на github PR
+     */
+    private fun isCodeReviewRequest(prompt: String): Boolean {
+        val lowerPrompt = prompt.lowercase()
+        val hasReviewKeyword = lowerPrompt.contains("ревью") || lowerPrompt.contains("review")
+        val hasGithubPrUrl = prompt.contains("github.com") && prompt.contains("/pull/")
+
+        return hasReviewKeyword && hasGithubPrUrl
+    }
+
+    /**
+     * Загружает системный промпт для code review из resources
+     */
+    private fun loadCodeReviewPrompt(): String {
+        return try {
+            val resource = this::class.java.classLoader.getResourceAsStream("code-review-prompt.txt")
+            resource?.bufferedReader()?.use { it.readText() }
+                ?: run {
+                    logger.warn("Code review prompt file not found, using default")
+                    "Ты - опытный code reviewer. Проанализируй Pull Request используя MCP tools."
+                }
+        } catch (e: Exception) {
+            logger.error("Failed to load code review prompt", e)
+            "Ты - опытный code reviewer. Проанализируй Pull Request используя MCP tools."
         }
     }
 

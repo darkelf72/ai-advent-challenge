@@ -12,6 +12,12 @@ services:
     networks:
       - ai-network
     restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "wget", "--quiet", "--tries=1", "--spider", "http://localhost:8081/health"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 30s
 
   # HTTP MCP Server
   http-mcp-server:
@@ -24,6 +30,12 @@ services:
     networks:
       - ai-network
     restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "wget", "--quiet", "--tries=1", "--spider", "http://localhost:8082/health"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 30s
 
   # Local MCP Server
   local-mcp-server:
@@ -43,6 +55,26 @@ services:
       retries: 5
       start_period: 30s
 
+  # Git MCP Server
+  git-mcp-server:
+    build:
+      context: .
+      dockerfile: Dockerfile.git-mcp-server
+    container_name: git-mcp-server
+    ports:
+      - "8083:8083"
+    volumes:
+      - ./.git:/app/.git:ro  # Mount .git directory as read-only
+    networks:
+      - ai-network
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "wget", "--quiet", "--tries=1", "--spider", "http://localhost:8083/health"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 30s
+
   # AI Agent - Main application
   ai-agent:
     build:
@@ -55,12 +87,19 @@ services:
       - YANDEX_API_KEY=${YANDEX_API_KEY:-}
       - GIGA_CHAT_API_KEY=${GIGA_CHAT_API_KEY:-}
       - LOCAL_MCP_SERVER_URL=http://local-mcp-server:8080
+      - DB_MCP_SERVER_URL=http://db-mcp-server:8081
+      - HTTP_MCP_SERVER_URL=http://http-mcp-server:8082
+      - GIT_MCP_SERVER_URL=http://git-mcp-server:8083
     networks:
       - ai-network
     depends_on:
       local-mcp-server:
         condition: service_healthy
       db-mcp-server:
+        condition: service_healthy
+      http-mcp-server:
+        condition: service_healthy
+      git-mcp-server:
         condition: service_healthy
     restart: unless-stopped
     healthcheck:

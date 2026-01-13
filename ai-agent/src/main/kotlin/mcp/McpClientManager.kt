@@ -15,16 +15,19 @@ class McpClientManager(
     private val dbMcpClient: Client,
     private val httpMcpClient: Client,
     private val localMcpClient: Client,
+    private val gitMcpClient: Client,
     private val mcpHttpClient: HttpClient,
     private val dbMcpServerUrl: String,
     private val httpMcpServerUrl: String,
-    private val localMcpServerUrl: String
+    private val localMcpServerUrl: String,
+    private val gitMcpServerUrl: String
 ) {
     private val logger = LoggerFactory.getLogger(McpClientManager::class.java)
 
     private val dbMutex = Mutex()
     private val httpMutex = Mutex()
     private val localMutex = Mutex()
+    private val gitMutex = Mutex()
 
     @Volatile
     private var dbClientConnected = false
@@ -34,6 +37,9 @@ class McpClientManager(
 
     @Volatile
     private var localClientConnected = false
+
+    @Volatile
+    private var gitClientConnected = false
 
     /**
      * Получает DB MCP клиент, подключаясь к серверу при необходимости
@@ -114,5 +120,32 @@ class McpClientManager(
             }
         }
         return localMcpClient
+    }
+
+    /**
+     * Получает Git MCP клиент, подключаясь к серверу при необходимости
+     */
+    suspend fun getGitClient(): Client? {
+        if (!gitClientConnected) {
+            gitMutex.withLock {
+                if (!gitClientConnected) {
+                    try {
+                        logger.info("Connecting to Git MCP server at $gitMcpServerUrl...")
+                        gitMcpClient.connect(
+                            transport = SseClientTransport(
+                                urlString = gitMcpServerUrl,
+                                client = mcpHttpClient
+                            )
+                        )
+                        gitClientConnected = true
+                        logger.info("Successfully connected to Git MCP server")
+                    } catch (e: Exception) {
+                        logger.error("Failed to connect to Git MCP server at $gitMcpServerUrl: ${e.message}")
+                        return null
+                    }
+                }
+            }
+        }
+        return gitMcpClient
     }
 }

@@ -56,6 +56,17 @@ class McpToolsService(
             }
         }
 
+        // Получаем tools из Git MCP клиента
+        mcpClientManager.getGitClient()?.let { client ->
+            try {
+                val gitTools = client.listTools(ListToolsRequest())
+                tools.addAll(gitTools.tools)
+                logger.debug("Retrieved ${gitTools.tools.size} tools from Git MCP client")
+            } catch (e: Exception) {
+                logger.warn("Failed to get tools from Git MCP client: ${e.message}")
+            }
+        }
+
         logger.info("Total available tools: ${tools.size}")
         return tools
     }
@@ -114,6 +125,21 @@ class McpToolsService(
                     }
                 } catch (e: Exception) {
                     logger.debug("Failed to execute $toolName via Local MCP client: ${e.message}")
+                }
+            }
+
+            // Пробуем найти и выполнить tool через Git MCP клиент
+            mcpClientManager.getGitClient()?.let { client ->
+                try {
+                    val tools = client.listTools(ListToolsRequest())
+                    if (tools.tools.any { it.name == toolName }) {
+                        logger.debug("Tool $toolName found in Git MCP client")
+                        val request = CallToolRequest(CallToolRequestParams(toolName, arguments))
+                        val result = client.callTool(request)
+                        return extractResultContent(result, toolName)
+                    }
+                } catch (e: Exception) {
+                    logger.debug("Failed to execute $toolName via Git MCP client: ${e.message}")
                 }
             }
 

@@ -7,17 +7,19 @@ import apiclients.config.ApiClientConfig
 import apiclients.gigachat.dto.*
 import database.repository.ClientConfigRepository
 import database.repository.MessageHistoryRepository
-import embedding.rag.RagClient
 import io.ktor.client.*
 import io.ktor.client.call.*
 import io.ktor.client.request.*
 import io.ktor.client.statement.*
 import io.ktor.http.*
 import mcp.McpToolsService
+import rag.RagToolHandler
 import org.slf4j.LoggerFactory
 import java.math.BigDecimal
 import java.math.RoundingMode
 import java.util.*
+import kotlinx.serialization.json.jsonPrimitive
+import kotlinx.serialization.json.intOrNull
 
 /**
  * API клиент для GigaChat (Сбер).
@@ -32,8 +34,8 @@ class GigaChatApiClient(
     configRepository: ClientConfigRepository,
     messageHistoryRepository: MessageHistoryRepository,
     private val mcpToolsService: McpToolsService,
-    ragClient: RagClient? = null
-) : BaseApiClient(httpClient, apiClientConfig, clientName, configRepository, messageHistoryRepository, ragClient) {
+    private val ragToolHandler: RagToolHandler
+) : BaseApiClient(httpClient, apiClientConfig, clientName, configRepository, messageHistoryRepository) {
 
     private val logger = LoggerFactory.getLogger(GigaChatApiClient::class.java)
 
@@ -146,7 +148,25 @@ class GigaChatApiClient(
                 }
 
                 logger.info("Processing function_call: ${functionCall.name} with arguments${functionCall.arguments}")
-                val functionResult = mcpToolsService.executeTool(functionCall.name, functionCall.arguments)
+
+                // Выполняем tool: RAG tool или MCP tool
+                val functionResult = if (functionCall.name == "rag_search") {
+                    // Обрабатываем RAG tool локально
+                    val query = functionCall.arguments.get("query")?.jsonPrimitive?.content
+                        ?: return createErrorResponse(
+                            "RAG tool requires 'query' parameter",
+                            totalPromptTokens,
+                            totalCompletionTokens,
+                            totalTokensCount
+                        )
+                    val topK = functionCall.arguments.get("topK")?.jsonPrimitive?.intOrNull ?: 5
+
+                    logger.info("Executing RAG tool: query='$query', topK=$topK")
+                    ragToolHandler.executeSearch(query, topK)
+                } else {
+                    // Обрабатываем MCP tool через McpToolsService
+                    mcpToolsService.executeTool(functionCall.name, functionCall.arguments)
+                }
 
                 // Формируем новый список сообщений с результатом функции
                 currentMessages = buildMessagesWithFunctionResult(
@@ -252,16 +272,24 @@ class GigaChatApiClient(
     }
 
     /**
-     * Получает список доступных инструментов из MCP серверов через McpToolsService.
+     * Получает список доступных инструментов из MCP серверов и добавляет RAG tool.
      * Преобразует формат MCP Tool в формат GigaChat Tool.
      * Запрашивает актуальный список tools при каждом вызове.
      */
-    private suspend fun getTools(): List<GigaChatTool> =
-        mcpToolsService.getAvailableTools().map {
+    private suspend fun getTools(): List<GigaChatTool> {
+        // Получаем MCP tools
+        val mcpTools = mcpToolsService.getAvailableTools()
+
+        // Добавляем RAG tool
+        val ragTool = ragToolHandler.createToolDefinition()
+
+        // Объединяем и преобразуем в формат GigaChat
+        return (mcpTools + ragTool).map {
             GigaChatTool(
                 name = it.name,
                 description = it.description ?: "No description",
                 parameters = it.inputSchema.properties
             )
         }
+    }
 }

@@ -28,9 +28,8 @@ class YandexApiClient(
     apiClientConfig: ApiClientConfig,
     clientName: String,
     configRepository: ClientConfigRepository,
-    messageHistoryRepository: MessageHistoryRepository,
-    ragClient: RagClient? = null
-) : BaseApiClient(httpClient, apiClientConfig, clientName, configRepository, messageHistoryRepository, ragClient) {
+    messageHistoryRepository: MessageHistoryRepository
+) : BaseApiClient(httpClient, apiClientConfig, clientName, configRepository, messageHistoryRepository) {
 
     private companion object {
         const val URL = "https://llm.api.cloud.yandex.net/foundationModels/v1/completion"

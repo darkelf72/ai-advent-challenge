@@ -65,6 +65,8 @@ services:
       - "8083:8083"
     volumes:
       - ./.git:/app/.git:ro  # Mount .git directory as read-only
+    environment:
+      - GIT_REPOSITORY_PATH=.  # Текущий каталог (где смонтирован .git)
     networks:
       - ai-network
     restart: unless-stopped

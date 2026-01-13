@@ -16,7 +16,12 @@ import org.slf4j.LoggerFactory
  */
 fun Application.configureMcpServer() {
     val logger = LoggerFactory.getLogger("McpConfiguration")
-    val gitService = GitService()
+
+    // Путь к корневому каталогу проекта ai-advent-challenge
+    // Локально: ".." (на уровень выше от git-mcp-server/)
+    // Docker: "." (текущая директория, где смонтирован .git)
+    val repositoryPath = System.getenv("GIT_REPOSITORY_PATH") ?: ".."
+    val gitService = GitService(repositoryPath)
 
     routing {
         // Health check endpoint

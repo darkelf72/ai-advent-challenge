@@ -12,7 +12,7 @@ import java.io.File
 
 /**
  * Сервис для выполнения Git операций через JGit.
- * Использует текущий git-репозиторий проекта.
+ * Использует git-репозиторий проекта ai-advent-challenge.
  */
 class GitService(private val repositoryPath: String = ".") {
     private val logger = LoggerFactory.getLogger(GitService::class.java)

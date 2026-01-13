@@ -40,6 +40,7 @@ data class StandardApiResponse(
  * - Управление историей сообщений
  * - Алгоритм выполнения запроса (добавление в историю, замер времени, расчет метрик)
  * - Обработку ошибок
+ * - Распознавание code review запросов и загрузку специального system prompt
  *
  * Наследники должны реализовать специфику конкретного API:
  * - executeApiRequest: логика запроса к конкретному API
@@ -50,8 +51,7 @@ abstract class BaseApiClient(
     protected val apiClientConfig: ApiClientConfig,
     protected val clientName: String,
     private val configRepository: ClientConfigRepository,
-    private val messageHistoryRepository: MessageHistoryRepository,
-    private val ragClient: RagClient? = null
+    private val messageHistoryRepository: MessageHistoryRepository
 ) : ApiClientInterface {
     private val logger = LoggerFactory.getLogger(this::class.java)
 
@@ -120,70 +120,40 @@ abstract class BaseApiClient(
      */
     private suspend fun sendRequestAsync(userPrompt: String): ApiResponse {
         return try {
-            // Шаг 0: Проверяем запрос на code review
+            // Шаг 1: Проверяем запрос на code review и загружаем специальный system prompt
             val isCodeReview = isCodeReviewRequest(userPrompt)
             val codeReviewSystemPrompt = if (isCodeReview) {
-                logger.info("Code review request detected, loading code review system prompt and activating RAG")
+                logger.info("Code review request detected, loading code review system prompt")
                 loadCodeReviewPrompt()
             } else {
                 null
             }
 
-            // Шаг 1: Проверяем наличие команды /help и определяем запрос для RAG
-            val useRag = userPrompt.startsWith("/help ") || isCodeReview // RAG всегда активен для code review
-            val actualQuery = if (userPrompt.startsWith("/help ")) {
-                userPrompt.substring("/help ".length).trim()
-            } else {
-                userPrompt
-            }
-
-            // Шаг 2: Аугментация промпта с помощью RAG (если команда /help присутствует)
-            val finalPrompt = if (useRag && ragClient != null) {
-                logger.info("RAG enabled (via /help command), augmenting prompt with context")
-                try {
-                    ragClient.augmentPromptWithContext(actualQuery)
-                } catch (e: Exception) {
-                    logger.error("RAG augmentation failed, using original prompt", e)
-                    actualQuery
-                }
-            } else {
-                if (useRag) {
-                    logger.warn("RAG requested but ragClient is not available")
-                }
-                actualQuery
-            }
-
-            // Шаг 3: Добавляем сообщение пользователя в историю (без команды /help)
-            val userMessage = ChatMessage(role = "user", content = actualQuery)
+            // Шаг 2: Добавляем сообщение пользователя в историю
+            val userMessage = ChatMessage(role = "user", content = userPrompt)
             _messageHistory.add(userMessage)
 
-            // Шаг 4: Подготавливаем контекст для запроса (используем финальный промпт и code review system prompt если есть)
+            // Шаг 3: Подготавливаем контекст для запроса
             val requestContext = RequestContext(
                 systemPrompt = codeReviewSystemPrompt ?: config.systemPrompt,
-                messageHistory = _messageHistory.toMutableList().apply {
-                    // Заменяем последний user message на augmented версию
-                    if (finalPrompt != actualQuery) {
-                        removeLast()
-                        add(ChatMessage(role = "user", content = finalPrompt))
-                    }
-                },
+                messageHistory = _messageHistory,
                 temperature = config.temperature,
                 maxTokens = config.maxTokens
             )
 
-            // Шаг 5: Выполняем API-специфичный запрос (делегируем наследникам)
+            // Шаг 4: Выполняем API-специфичный запрос (делегируем наследникам)
             val startTime = System.currentTimeMillis()
             val apiResponse = executeApiRequest(requestContext)
             val executionTime = System.currentTimeMillis() - startTime
 
-            // Шаг 6: Добавляем ответ ассистента в историю
+            // Шаг 5: Добавляем ответ ассистента в историю
             val assistantMessage = ChatMessage(role = "assistant", content = apiResponse.answer)
             _messageHistory.add(assistantMessage)
 
             // Сохраняем обновленную историю в БД
             saveMessageHistory()
 
-            // Шаг 7: Формируем результат с метриками
+            // Шаг 6: Формируем результат с метриками
             val apiResult = ApiResult(
                 elapsedTime = executionTime,
                 promptTokens = apiResponse.promptTokens,

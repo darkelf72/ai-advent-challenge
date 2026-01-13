@@ -14,6 +14,7 @@ import embedding.service.VectorSearchService
 import embedding.service.RerankerService
 import embedding.rag.RagClient
 import embedding.rag.OllamaRagClient
+import rag.RagToolHandler
 import io.ktor.client.*
 import io.ktor.client.engine.cio.*
 import io.ktor.client.plugins.contentnegotiation.*
@@ -82,6 +83,14 @@ val appModule = module {
     // RAG Client (Ollama implementation)
     single<RagClient> {
         OllamaRagClient(
+            ollamaClient = get(),
+            vectorSearchService = get()
+        )
+    }
+
+    // RAG Tool Handler для использования RAG как MCP tool
+    single<RagToolHandler> {
+        RagToolHandler(
             ollamaClient = get(),
             vectorSearchService = get()
         )
@@ -219,8 +228,7 @@ val appModule = module {
             apiClientConfig = chatApiClientConfig,
             clientName = "yandex",
             configRepository = get(),
-            messageHistoryRepository = get(),
-            ragClient = get()
+            messageHistoryRepository = get()
         )
     }
 
@@ -262,7 +270,7 @@ val appModule = module {
             configRepository = get(),
             messageHistoryRepository = get(),
             mcpToolsService = get(),
-            ragClient = get()
+            ragToolHandler = get()
         )
     }
 
@@ -274,7 +282,7 @@ val appModule = module {
             configRepository = get(),
             messageHistoryRepository = get(),
             mcpToolsService = get(),
-            ragClient = null  // RAG not needed for summarization
+            ragToolHandler = get()
         )
     }
 
